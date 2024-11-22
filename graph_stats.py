@@ -2,7 +2,7 @@
 
 import pickle 
 from itertools import combinations
-from constellation import Constellation
+from WUGs.scripts.constellation import Constellation
 
 
 """
