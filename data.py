@@ -107,24 +107,6 @@ def get_dataset_stats(dataset):
 
 
 
-"""
-# reads graph g, returns sense frequency distributions 1 and 2 of g
-def get_graph_stats_old(g):
-    print(graph.number_of_nodes())
-    #print(list(graph.nodes(data=True))[:5])     # list of nodes 
-    cluster_labels1 = [node['cluster'] for _, node in graph.nodes(data=True) if node['grouping']=='1']   # list of cluster labels of all nodes 
-    cluster_labels2 = [node['cluster'] for _, node in graph.nodes(data=True) if node['grouping']=='2']   # list of cluster labels of all nodes 
-    print(cluster_labels1)
-    print(cluster_labels2)
-    freq_dist1 = Counter(cluster_labels1)
-    freq_dist2 = Counter(cluster_labels2)
-    print(freq_dist1)
-    print(freq_dist2)
-    print("\n")
-
-    return freq_dist1, freq_dist2
-"""
-
 
 
 
