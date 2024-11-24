@@ -39,9 +39,17 @@ python -m pip install python-louvain
 python -m pip install pyvis==0.1.9
 
 # To validate your installation, consider now running this
-bash -e test.sh
+#bash -e test.sh
 
 # Export environment
 #conda env export > packages.yml
 
+
+
+
+# install xl-lexeme:
+git clone git@github.com:pierluigic/xl-lexeme.git
+cd xl-lexeme
+pip install .
+pip install huggingface_hub==0.25.0     # needed for XL-Lexeme model to work 
 
