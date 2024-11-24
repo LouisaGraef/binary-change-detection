@@ -4,8 +4,6 @@
 # https://github.com/pierluigic/xl-lexeme 
 # https://huggingface.co/pierluigic/xl-lexeme 
 
-# Vector -> cosine similarity between 2 vectors -> DWUG
-# variation of Correlation Clustering -> clustered DWUG -> ARI to quantify cluster agreement 
 
 import networkx as nx
 import csv
