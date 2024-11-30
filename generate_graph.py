@@ -19,7 +19,7 @@ model = WordTransformer('pierluigic/xl-lexeme')         # load model (from huggi
 
 
 """
-Generate a contextualized embedding of a use case with XL-Lexeme 
+Generate a contextualized embedding of a use with XL-Lexeme 
 return: embedding (type numpy.ndarray, shape (1024,))
 """
 def generate_embedding(context, indexes_target_token):
@@ -48,10 +48,10 @@ def add_edges(graph):
 
 
 """
-Generate a graph of 1 target word given its use cases. Nodes are identifiers (with attributes), no edges, 
+Generate a graph of 1 target word given its uses. Nodes are identifiers (with attributes), no edges, 
 embedding of use case is contained in node attributes 
 """
-def get_graph(uses):
+def generate_graph(uses):
     # Initialize graph 
     graph = nx.Graph()
     with open(uses, encoding='utf-8') as csvfile:                                                   # read in uses
@@ -74,14 +74,14 @@ def get_graph(uses):
 
     nx.set_node_attributes(graph, identifier2data)          # set attributes of all nodes 
 
-    print('\nnumber of nodes: ', len(graph.nodes))
-    print('number of edges: ', len(graph.edges))            # 0
+    #print('\nnumber of nodes: ', len(graph.nodes))
+    #print('number of edges: ', len(graph.edges))            # 0
 
     # Add edges (edge weight = cosine similarity beween two nodes)
     graph = add_edges(graph)        
 
-    print('\nnumber of nodes: ', len(graph.nodes))
-    print('number of edges: ', len(graph.edges))
+    #print('\nnumber of nodes: ', len(graph.nodes))
+    #print('number of edges: ', len(graph.edges))
 
     return graph
 
@@ -89,5 +89,5 @@ def get_graph(uses):
 
 if __name__=="__main__":
     uses = "./data/dwug_en/data/face_nn/uses.csv"
-    graph = get_graph(uses)    
+    graph = generate_graph(uses)    
     print(graph.nodes['fic_1964_16147.txt-1494-12'])
