@@ -4,6 +4,7 @@ from generate_graph import *
 from scipy.stats import spearmanr
 import glob 
 import pandas as pd
+from statistics import mean
 
 
 
@@ -11,10 +12,12 @@ import pandas as pd
 Evaluate the predicted annotation (graph generation with XL-Lexeme vectors and cosine similarity) 
 by calculating the Spearman correlation with human judgements.
 Input: dataset
-return: Spearman correlation and p-value between predicted edge weights and human judgements
+return: Mean Spearman correlation and p-value between predicted edge weights and human judgements
 """
 def get_correlation(dataset): 
     words = sorted(glob.glob(dataset + "/data/*"))      # list of directories of all words in the data directory 
+    corr_values = []        # list of spearman correlation values of all words in the dataset 
+    p_values = []           # list of p-values of all words in the dataset 
     for word in words:                     
         uses = word + "/uses.csv" 
         df = pd.read_csv(word + "/judgments.csv", sep='\t') 
@@ -29,8 +32,13 @@ def get_correlation(dataset):
         pred_ann.sort()             # sort list of predicted annotations  
 
         corr, pval = spearmanr(judgements, pred_ann)
-        print("\nSpearman's correlation coefficient:", corr)
-        print("p-value:", pval)
+        corr_values.append(corr)
+        p_values.append(pval)
+
+    mean_corr = round(mean(corr_values), 3)        # mean spearman correlation of dataset 
+    mean_p = mean(p_values)        # mean p-value of dataset 
+
+    return mean_corr, mean_p
 
 
 
@@ -38,5 +46,12 @@ def get_correlation(dataset):
 if __name__=="__main__":
     #uses = "./data/dwug_en/data/face_nn/uses.csv"
     #graph = generate_graph(uses)    
-    dataset = "./data/dwug_en"
-    get_correlation(dataset)
+    print("---")
+    datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug", 
+                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]
+    for ds in datasets:
+        dataset = "./data/" + ds
+        corr, p_value = get_correlation(dataset)
+        print("Dataset: ", ds)
+        print("\nSpearman's correlation coefficient:", corr)
+        print("p_value:", p_value)
