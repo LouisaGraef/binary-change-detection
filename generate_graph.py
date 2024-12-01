@@ -10,6 +10,7 @@ import csv
 from WordTransformer import WordTransformer,InputExample
 from numpy import dot
 from numpy.linalg import norm
+import re
 
 
 
@@ -52,6 +53,11 @@ Generate a graph of 1 target word given its uses. Nodes are identifiers (with at
 embedding of use case is contained in node attributes 
 """
 def generate_graph(uses):
+    if re.search("nor_dia_change-main", uses):      # check if uses is part of a nordiachange dataset 
+        nordiachange = True
+    else:
+        nordiachange = False
+
     # Initialize graph 
     graph = nx.Graph()
     with open(uses, encoding='utf-8') as csvfile:                                                   # read in uses
@@ -62,7 +68,10 @@ def generate_graph(uses):
     identifier2data = {}                    # maps node identifiers to their data 
     for (k, row) in enumerate(uses):
         row = row.copy()
-        identifier = row['identifier']
+        if nordiachange == True:
+            identifier = str(row['identifier_system'])
+        else:
+            identifier = row['identifier']
         identifier2data[identifier] = row
         graph.add_node(identifier)              # add node 
 
