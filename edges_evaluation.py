@@ -5,6 +5,7 @@ from scipy.stats import spearmanr
 import glob 
 import pandas as pd
 from statistics import mean
+import os
 
 
 
@@ -15,6 +16,10 @@ Input: dataset
 return: Mean Spearman correlation and p-value between predicted edge weights and human judgements
 """
 def get_correlation(dataset): 
+    corr_stats = {}
+    corr_stats['dataset'] = dataset
+    dataset = "./data/" + dataset       # full path to dataset
+
     words = sorted(glob.glob(dataset + "/data/*"))      # list of directories of all words in the data directory 
     corr_values = []        # list of spearman correlation values of all words in the dataset 
     p_values = []           # list of p-values of all words in the dataset 
@@ -41,7 +46,10 @@ def get_correlation(dataset):
     mean_corr = round(mean(corr_values), 3)        # mean spearman correlation of dataset 
     mean_p = mean(p_values)        # mean p-value of dataset 
 
-    return mean_corr, mean_p
+    corr_stats['mean_spearman_correlation'] = mean_corr
+    corr_stats['mean_p_value'] = mean_p
+
+    return corr_stats, mean_corr, mean_p
 
 
 
@@ -53,9 +61,20 @@ if __name__=="__main__":
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]
     
-    for ds in datasets:
-        dataset = "./data/" + ds
-        corr, p_value = get_correlation(dataset)
-        print("\nDataset: ", ds)
+    is_header = True        # create header first when exporting stats
+    os.makedirs('./stats', exist_ok=True)     # create directory for stats (no exception is raised if directory aready exists)
+    with open('./stats/correlation_stats.csv', 'w', encoding='utf-8') as f_out:     # 'w' mode deletes contents of file 
+        pass
+    
+    for dataset in datasets:
+        corr_stats, corr, p_value = get_correlation(dataset)            # get correlation stats of one dataset 
+        print("\nDataset: ", dataset)
         print("Spearman's correlation coefficient:", corr)
         print("p_value:", p_value)
+
+        # export stats 
+        with open('./stats/correlation_stats.csv', 'a', encoding='utf-8') as f_out:
+            if is_header:
+                f_out.write('\t'.join([key for key in corr_stats]) + '\n')
+                is_header = False 
+            f_out.write('\t'.join([str(corr_stats[key]) for key in corr_stats]) + '\n')

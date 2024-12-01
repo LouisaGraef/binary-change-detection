@@ -1,6 +1,9 @@
 
 import numpy 
-import pandas as pd
+import pandas as pd 
+import pickle 
+import csv 
+import os
 
 
 
@@ -18,6 +21,9 @@ For NorDiaChange the two Subsets are concatenated and the mean stats of the whol
 """
 
 def get_dataset_stats(dataset):
+    dstats = {}
+    dstats['dataset'] = dataset
+
     # stats from stats_groupings.csv 
     if dataset=="dwug_de_sense":
         stats_groupings = "./data/dwug_de_sense/stats/maj_2/stats_groupings.csv"
@@ -40,10 +46,14 @@ def get_dataset_stats(dataset):
     nodes2 = list(df.iloc[:,4])     # number of nodes in grouping 2 per graph (word) 
     mean_nodes = round(numpy.mean(nodes),2)     # mean number of nodes rounded to 2 decimal digits 
     nodes_std_deviation = round(numpy.std(nodes),2)     # standard deviation of number of nodes 
+    dstats['mean_nodes_per_graph'] = mean_nodes
+    dstats['mean_nodes_std_deviation'] = nodes_std_deviation
     mean_nodes1 = round(numpy.mean(nodes1),2)     # mean number of nodes in grouping 1 rounded to 2 decimal digits 
     mean_nodes2 = round(numpy.mean(nodes2),2)     # mean number of nodes in grouping 2 rounded to 2 decimal digits 
-    frequ_dist1 = list(df['cluster_freq_dist1'])   # cluster frequ. distribution in grouping 1 
-    frequ_dist2 = list(df['cluster_freq_dist2'])   # cluster frequ. distribution in grouping 2 
+    dstats['mean_nodes1'] = mean_nodes1
+    dstats['mean_nodes2'] = mean_nodes2
+    frequ_dist1 = list(df['cluster_freq_dist1'])   # cluster frequ. distributions in grouping 1 
+    frequ_dist2 = list(df['cluster_freq_dist2'])   # cluster frequ. distributions in grouping 2 
     binary = list(df['change_binary'])      # binary change scores 
 
     print(f"\nDataset: {dataset}")
@@ -56,10 +66,10 @@ def get_dataset_stats(dataset):
         pass
     else:
         if dataset=="nor_dia_change-main":
-            sg_subset1 = "./data/nor_dia_change-main/subset1/stats/stats.tsv"
-            sg_subset2 = "./data/nor_dia_change-main/subset2/stats/stats.tsv"
-            df2_subset1 = pd.read_csv(sg_subset1, sep='\t')  # stats_groupings dataframe of subset 1  
-            df2_subset2 = pd.read_csv(sg_subset2, sep='\t')  # stats_groupings dataframe of subset 2  
+            stats_subset1 = "./data/nor_dia_change-main/subset1/stats/stats.tsv"
+            stats_subset2 = "./data/nor_dia_change-main/subset2/stats/stats.tsv"
+            df2_subset1 = pd.read_csv(stats_subset1, sep='\t')  # stats_groupings dataframe of subset 1  
+            df2_subset2 = pd.read_csv(stats_subset2, sep='\t')  # stats_groupings dataframe of subset 2  
             df2 = pd.concat([df2_subset1, df2_subset2], axis=0)    # concatenate both subsets to gets stats of the whole dataset 
         else: 
             stats = f"./data/{dataset}/stats/opt/stats.csv"
@@ -71,10 +81,13 @@ def get_dataset_stats(dataset):
         mean_norm_loss = round(numpy.mean(norm_loss),4)     # mean normalized loss 
         mean_judg = round(numpy.mean(judg),2)           # mean number of judgements 
         mean_judg_edge = round(numpy.mean(judg_edge),2)           # mean number of judgements per edge 
+        dstats['mean_normalized_loss_per_graph'] = mean_norm_loss
+        dstats['mean_judgements_per_graph'] = mean_judg
+        dstats['mean_judgements_per_edge'] = mean_judg_edge
 
         print(f"Mean normalized loss: {mean_norm_loss} \nMean number of judgements: {mean_judg} \nMean number of judgements per edge: {mean_judg_edge}\n")
 
-    return frequ_dist1, frequ_dist2, binary
+    return dstats, frequ_dist1, frequ_dist2, binary
 
 
 
@@ -86,8 +99,22 @@ if __name__=="__main__":
     # List of datasets: DWUG DE, DiscoWUG, RefWUG, DWUG EN, DWUG SV, DWUG LA, DWUG ES, ChiWUG, NorDiaChange, DWUG DE Sense 
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug", 
                 "nor_dia_change-main", "dwug_de_sense", "dwug_de_sense_maj3"]
-    frequ_dist1, frequ_dist2, binary = get_dataset_stats("dwug_en")                 # get stats of one dataset 
-    print(binary)
+    
+    is_header = True        # create header first when exporting stats
+    os.makedirs('./stats', exist_ok=True)     # create directory for stats (no exception is raised if directory aready exists)
+    with open('./stats/dataset_stats.csv', 'w', encoding='utf-8') as f_out:     # 'w' mode deletes contents of file 
+        pass
+
+    for dataset in datasets:
+        dataset_stats, frequ_dist1, frequ_dist2, binary = get_dataset_stats(dataset)                 # get stats of one dataset 
+
+        # export stats 
+        with open('./stats/dataset_stats.csv', 'a', encoding='utf-8') as f_out:
+            if is_header:
+                f_out.write('\t'.join([key for key in dataset_stats]) + '\n')
+                is_header = False 
+            f_out.write('\t'.join([str(dataset_stats[key]) for key in dataset_stats]) + '\n')
+    #print(binary)
     print("")
 
 
