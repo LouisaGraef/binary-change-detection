@@ -28,24 +28,22 @@ def cluster_graph_cc(graph):
     graph = transform_edge_weights(graph, transformation = weight_transformation) # shift edge weights 
 
     # Cluster graph
-    clusters, cluster_stats = cluster_correlation_search(graph, s = 5, max_attempts = 100, max_iters = 200) 
+    clusters, cluster_stats = cluster_correlation_search(graph, s = 5, max_attempts = 100, max_iters = 500) 
     
     # Display results
     node2cluster_inferred = {node:i for i, cluster in enumerate(clusters) for node in cluster}
     node2cluster_inferred = {node:node2cluster_inferred[node] for node in graph.nodes}
-    print('clusters_inferred', node2cluster_inferred)
-    print('clusters', node2cluster_inferred.values())
-    print('loss', cluster_stats['loss'])
+    #print('clusters_inferred', node2cluster_inferred)
+    #print('loss', cluster_stats['loss'])
     
     # Clustering again and initializing with the previous solution can improve the solution in many cases (this can be done multiple times)
-    clusters, cluster_stats = cluster_correlation_search(graph, s = 5, max_attempts = 100, max_iters = 200, initial = clusters)
+    clusters, cluster_stats = cluster_correlation_search(graph, s = 5, max_attempts = 100, max_iters = 500, initial = clusters)
 
     # Display results after second iteration
     node2cluster_inferred = {node:i for i, cluster in enumerate(clusters) for node in cluster}
     node2cluster_inferred = {node:node2cluster_inferred[node] for node in graph.nodes}
-    print('clusters_inferred 2nd (dependent) iteration', node2cluster_inferred)
-    print('clusters', node2cluster_inferred.values())
-    print('loss', cluster_stats['loss'])
+    #print('clusters_inferred 2nd (dependent) iteration', node2cluster_inferred)
+    #print('loss', cluster_stats['loss'])
 
     return clusters, cluster_stats
 
@@ -59,4 +57,7 @@ if __name__=="__main__":
     graph = generate_graph(uses)    
     #print(graph.nodes['fic_1964_16147.txt-1494-12'], '\n')
     clusters, cluster_stats = cluster_graph_cc(graph)
+    print('\n')
+    print(clusters)
+    print(cluster_stats)
     
