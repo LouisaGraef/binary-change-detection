@@ -60,6 +60,8 @@ if __name__=="__main__":
     print("---")
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]
+    datasets_paper_versions = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
+                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]
     
     is_header = True        # create header first when exporting stats
     os.makedirs('./stats', exist_ok=True)     # create directory for stats (no exception is raised if directory aready exists)
