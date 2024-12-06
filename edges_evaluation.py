@@ -16,7 +16,7 @@ Input: dataset
 return: Mean Spearman correlation and p-value between predicted edge weights and human judgements
 """
 def get_correlation(dataset): 
-    corr_stats = {}
+    corr_stats = {}                     # data to be saved 
     corr_stats['dataset'] = dataset
     dataset = "./data/" + dataset       # full path to dataset
 
