@@ -1,7 +1,7 @@
 # binary-change-detection
 
 - `setup.sh`: Creates a conda environment and installs all required packages.  
-- `download_data.py`: Downloads datasets  
+- `download_data.py`: Downloads datasets to './data'
 - `data_stats.py`: Prints statistics of the datasets, saves statistics in './stats/dataset_stats.csv' 
 - `graph_stats.py`: Prints statistics of one graph 
 - `generate_graph.py`: Generates a graph with XL-Lexeme and Cosinus Distance given a dataframe of uses 
