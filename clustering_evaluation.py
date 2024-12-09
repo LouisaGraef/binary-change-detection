@@ -116,9 +116,9 @@ if __name__=="__main__":
     
     for dataset in datasets:
         if dataset == "nor_dia_change-main/subset1" or dataset == "nor_dia_change-main/subset2":
-            words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters").iterdir() if f.is_file])
+            words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters").iterdir() if f.is_file], key=str.lower)
         else:
-            words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters/opt").iterdir() if f.is_file]) # list of all words in the clusters directory 
+            words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters/opt").iterdir() if f.is_file], key=str.lower) # list of all words in the clusters directory 
         words_val, words_test = train_test_split(words, test_size=0.5, random_state=42)     # split words in validation and test sets, random and reproducible split
         print(words_val)
         ari_stats, mean_ri, mean_ari  = evaluate_clustering(dataset, words_val)            # get clustering evaluation stats of one dataset 

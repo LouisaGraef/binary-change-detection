@@ -6,6 +6,8 @@ import glob
 import pandas as pd
 from statistics import mean
 import os
+from pathlib import Path
+from sklearn.model_selection import train_test_split
 
 
 
@@ -15,14 +17,11 @@ by calculating the Spearman correlation with human judgements.
 Input: dataset
 return: Mean Spearman correlation and p-value between predicted edge weights and human judgements
 """
-def get_correlation(dataset): 
+def get_correlation(dataset, words): 
     corr_stats = {}                     # data to be saved 
     corr_stats['dataset'] = dataset
-    dataset = "./data/" + dataset       # full path to dataset
 
-    words = sorted(glob.glob(dataset + "/data/*"))      # list of directories of all words in the data directory 
     corr_values = []        # list of spearman correlation values of all words in the dataset 
-    p_values = []           # list of p-values of all words in the dataset 
     for word in words:                     
         uses = word + "/uses.csv" 
         df = pd.read_csv(word + "/judgments.csv", sep='\t') 
@@ -41,15 +40,12 @@ def get_correlation(dataset):
         else:
             corr, pval = spearmanr(judgements, pred_ann)
             corr_values.append(corr)
-            p_values.append(pval)
 
     mean_corr = round(mean(corr_values), 3)        # mean spearman correlation of dataset 
-    mean_p = mean(p_values)        # mean p-value of dataset 
 
     corr_stats['mean_spearman_correlation'] = mean_corr
-    corr_stats['mean_p_value'] = mean_p
 
-    return corr_stats, mean_corr, mean_p
+    return corr_stats, mean_corr
 
 
 
@@ -57,6 +53,9 @@ def get_correlation(dataset):
 if __name__=="__main__":
     #uses = "./data/dwug_en/data/face_nn/uses.csv"
     #graph = generate_graph(uses)    
+    #print(sorted(glob.glob("./data/refwug/data/*"), key=str.lower))
+    #print(sorted([d.name for d in Path("./data/refwug/data").iterdir() if d.is_dir], key=str.lower))
+    #quit()
     print("---")
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]
@@ -67,12 +66,19 @@ if __name__=="__main__":
     os.makedirs('./stats', exist_ok=True)     # create directory for stats (no exception is raised if directory aready exists)
     with open('./stats/correlation_stats.csv', 'w', encoding='utf-8') as f_out:     # 'w' mode deletes contents of file 
         pass
+
+    correlations = []
     
     for dataset in datasets:
-        corr_stats, corr, p_value = get_correlation(dataset)            # get correlation stats of one dataset 
+        words = sorted(glob.glob("./data/" + dataset + "/data/*"), key=str.lower)         # list of paths to words data 
+        words_val, words_test = train_test_split(words, test_size=0.5, random_state=42)  # split words in validation and test sets, random and reproducible split
+        
+        corr_stats, corr = get_correlation(dataset, words_val)       # get correlation stats of one dataset 
         print("\nDataset: ", dataset)
         print("Spearman's correlation coefficient:", corr)
-        print("p_value:", p_value)
+
+        weight = len(words_val)                 # number of words in the dataset 
+        correlations.append((corr, weight))
 
         # export stats 
         with open('./stats/correlation_stats.csv', 'a', encoding='utf-8') as f_out:
@@ -80,3 +86,14 @@ if __name__=="__main__":
                 f_out.write('\t'.join([key for key in corr_stats]) + '\n')
                 is_header = False 
             f_out.write('\t'.join([str(corr_stats[key]) for key in corr_stats]) + '\n')
+
+
+    # Get the weighted average correlation based on the number of targets in each dataset test set 
+    weights_sum = sum([weight for (corr,weight) in correlations])   # sum of all weights 
+    weighted_avg_corr = sum([corr*(weight/weights_sum) for (corr,weight) in correlations])
+
+    print("\nWeighted average correlation: ", weighted_avg_corr)
+
+    # export weighted average correlation 
+    with open('./stats/correlation_stats.csv', 'a', encoding='utf-8') as f_out:
+        f_out.write('\t'.join(['weighted_correlation', str(weighted_avg_corr)]) + '\n')
