@@ -10,6 +10,28 @@ from statistics import mean
 from sklearn.model_selection import train_test_split
 import unicodedata
 
+
+"""
+Relabels graph nodes from 'identifer_system' to 'identifier', so that they 
+can be used as input for nor_dia_change clustering evaluation
+"""
+def map_identifier_system_to_identifier(graph, uses):
+    with open(uses, encoding='utf-8') as csvfile:                                                   # read in uses
+        reader = csv.DictReader(csvfile, delimiter='\t', quoting=csv.QUOTE_NONE, strict=True)
+        uses = [row for row in reader]                                                              # uses as list of dictionaries
+
+        # Get mapping for relabeling
+        system2identifier = {}                    # maps identifier_system to identifier for every node identifier 
+        for (k, row) in enumerate(uses):
+            row = row.copy()
+            system2identifier[str(row['identifier_system'])] = row['identifier']
+
+        # Relabel nodes 
+        graph = nx.relabel_nodes(graph, mapping=system2identifier)      
+
+    return graph 
+
+
 """
 Evaluate a clustering of one dataset with Adjusted Rand Index
 """
@@ -23,7 +45,10 @@ def evaluate_clustering(dataset, words):
 
     for word in words:
         # Get Gold labels 
-        gold_clusters = dataset + "/clusters/opt/" + word + ".csv"      # read in gold clusters 
+        if dataset == "./data/nor_dia_change-main/subset1" or dataset == "./data/nor_dia_change-main/subset2":
+            gold_clusters = dataset + "/clusters/" + word + ".tsv"      # read in gold clusters 
+        else:
+            gold_clusters = dataset + "/clusters/opt/" + word + ".csv"      # read in gold clusters 
         with open(gold_clusters, encoding='utf-8') as csvfile:
             reader = csv.DictReader(csvfile, delimiter='\t', quoting=csv.QUOTE_NONE, strict=True)
             node2cluster_gold = {}      # gold dictionary to map node ids to cluster ids 
@@ -37,8 +62,12 @@ def evaluate_clustering(dataset, words):
 
         # Get predicted labels 
         uses = dataset + "/data/" + word + "/uses.csv" 
-        uses = unicodedata.normalize('NFC', uses)           # normalize string 
+        if dataset == "./data/discowug":
+            uses = unicodedata.normalize('NFC', uses)
         graph = generate_graph(uses)                                    # generate graph 
+        if dataset == "./data/nor_dia_change-main/subset1" or dataset == "./data/nor_dia_change-main/subset2":
+            graph = map_identifier_system_to_identifier(graph, uses)      # relabel graph nodes from 'identifer_system' to 'identifier'
+
         clusters, cluster_stats = cluster_graph_cc(graph)               # cluster graph 
 
         node2cluster_inferred = {node:i for i, cluster in enumerate(clusters) for node in cluster}
@@ -86,7 +115,10 @@ if __name__=="__main__":
         pass
     
     for dataset in datasets:
-        words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters/opt").iterdir() if f.is_file])    # list of all words in the clusters directory 
+        if dataset == "nor_dia_change-main/subset1" or dataset == "nor_dia_change-main/subset2":
+            words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters").iterdir() if f.is_file])
+        else:
+            words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters/opt").iterdir() if f.is_file]) # list of all words in the clusters directory 
         words_val, words_test = train_test_split(words, test_size=0.5, random_state=42)     # split words in validation and test sets, random and reproducible split
         print(words_val)
         ari_stats, mean_ri, mean_ari  = evaluate_clustering(dataset, words_val)            # get clustering evaluation stats of one dataset 
