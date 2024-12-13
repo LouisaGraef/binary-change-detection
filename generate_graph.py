@@ -77,7 +77,7 @@ def generate_graph(uses):
         context = identifier2data[identifier]["context"]
         indexes = identifier2data[identifier]["indexes_target_token"]       # string (e.g. '119:122')
         indexes = list(map(int, indexes.split(':')))                        # list of integers (e.g. [119,122])
-        emb = generate_embedding(context, indexes)          # generate embedding of use case 
+        emb = generate_embedding(context, indexes)          # generate embedding of use  
         identifier2data[identifier]["embedding"]= emb       # add embedding to node data 
 
     nx.set_node_attributes(graph, identifier2data)          # set attributes of all nodes 
