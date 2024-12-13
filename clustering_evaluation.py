@@ -40,7 +40,6 @@ def evaluate_clustering(dataset, words):
     ari_stats['dataset'] = dataset
     dataset = "./data/" + dataset       # full path to dataset
 
-    ri_values = []        # list of ri values of all words in the dataset 
     ari_values = []       # list of ari values of all words in the dataset 
 
     for word in words:
@@ -78,18 +77,15 @@ def evaluate_clustering(dataset, words):
         # Get Adjusted Rand Index 
         ri = rand_score(labels_true, labels_pred)
         ari = adjusted_rand_score(labels_true, labels_pred)
-        ri_values.append(ri)
         ari_values.append(ari)
         #print(f'Rand Index: {ri}')
         #print(f'Adjusted Rand Index: {ari}')
 
-    mean_ri = mean(ri_values)       # mean Rand Index of dataset
     mean_ari = mean(ari_values)     # mean Adjusted Rand Index of dataset
 
-    ari_stats['mean_rand_index'] = mean_ri
     ari_stats['mean_adjusted_rand_index'] = mean_ari
 
-    return ari_stats, mean_ri, mean_ari 
+    return ari_stats, mean_ari 
 
 
 
@@ -119,11 +115,9 @@ if __name__=="__main__":
             words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters").iterdir() if f.is_file], key=str.lower)
         else:
             words = sorted([f.stem for f in Path("./data/" + dataset + "/clusters/opt").iterdir() if f.is_file], key=str.lower) # list of all words in the clusters directory 
-        words_val, words_test = train_test_split(words, test_size=0.5, random_state=42)     # split words in validation and test sets, random and reproducible split
-        print(words_val)
-        ari_stats, mean_ri, mean_ari  = evaluate_clustering(dataset, words_val)            # get clustering evaluation stats of one dataset 
+        
+        ari_stats, mean_ari  = evaluate_clustering(dataset, words)            # get clustering evaluation stats of one dataset 
         print("\nDataset: ", dataset)
-        print("Rand Index: ", mean_ri)
         print("Adjusted Rand Index: ", mean_ari)
 
         # export stats 

@@ -21,14 +21,14 @@ Clusters one graph with Correlation Clustering (https://github.com/Garrafao/corr
 Input: graph
 return: clusters, cluster_stats 
 """
-def cluster_graph_cc(graph):
+def cluster_graph_cc(graph, threshold, max_clusters, max_attempts, max_iters):
     # Prepare graph for clustering
-    threshold = 0.5                       # edge weights with cosine similarity are between 0 and 1 
+    threshold = threshold                       # edge weights with cosine similarity are between 0 and 1 
     weight_transformation = lambda x: x-threshold
     graph = transform_edge_weights(graph, transformation = weight_transformation) # shift edge weights 
 
     # Cluster graph
-    clusters, cluster_stats = cluster_correlation_search(graph, s = 5, max_attempts = 100, max_iters = 500) 
+    clusters, cluster_stats = cluster_correlation_search(graph, s=max_clusters, max_attempts=max_attempts, max_iters=max_iters) 
     
     # Display results
     node2cluster_inferred = {node:i for i, cluster in enumerate(clusters) for node in cluster}
@@ -56,7 +56,7 @@ if __name__=="__main__":
     uses = "./data/dwug_en/data/bar_nn/uses.csv"
     graph = generate_graph(uses)    
     #print(graph.nodes['fic_1964_16147.txt-1494-12'], '\n')
-    clusters, cluster_stats = cluster_graph_cc(graph)
+    clusters, cluster_stats = cluster_graph_cc(graph, 0.5, 10, 200, 5000)
     print('\n')
     print(clusters)
     print(cluster_stats)

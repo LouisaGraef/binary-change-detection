@@ -20,8 +20,8 @@ return: Mean Spearman correlation and p-value between predicted edge weights and
 def get_correlation(dataset, words): 
     corr_stats = {}                     # data to be saved 
     corr_stats['dataset'] = dataset
-
     corr_values = []        # list of spearman correlation values of all words in the dataset 
+    
     for word in words:                     
         uses = word + "/uses.csv" 
         df = pd.read_csv(word + "/judgments.csv", sep='\t') 
@@ -53,9 +53,6 @@ def get_correlation(dataset, words):
 if __name__=="__main__":
     #uses = "./data/dwug_en/data/face_nn/uses.csv"
     #graph = generate_graph(uses)    
-    #print(sorted(glob.glob("./data/refwug/data/*"), key=str.lower))
-    #print(sorted([d.name for d in Path("./data/refwug/data").iterdir() if d.is_dir], key=str.lower))
-    #quit()
     print("---")
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]
@@ -71,13 +68,12 @@ if __name__=="__main__":
     
     for dataset in datasets:
         words = sorted(glob.glob("./data/" + dataset + "/data/*"), key=str.lower)         # list of paths to words data 
-        words_val, words_test = train_test_split(words, test_size=0.5, random_state=42)  # split words in validation and test sets, random and reproducible split
         
-        corr_stats, corr = get_correlation(dataset, words_val)       # get correlation stats of one dataset 
+        corr_stats, corr = get_correlation(dataset, words)       # get correlation stats of one dataset 
         print("\nDataset: ", dataset)
         print("Spearman's correlation coefficient:", corr)
 
-        weight = len(words_val)                 # number of words in the dataset 
+        weight = len(words)                 # number of words in the dataset 
         correlations.append((corr, weight))
 
         # export stats 

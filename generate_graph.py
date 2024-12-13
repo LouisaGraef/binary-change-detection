@@ -15,8 +15,7 @@ import re
 
 
 
-
-model = WordTransformer('pierluigic/xl-lexeme')         # load model (from hugging face)
+model = WordTransformer('pierluigic/xl-lexeme', device='cuda')         # load model (from hugging face)
 
 
 """
