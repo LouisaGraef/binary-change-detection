@@ -5,10 +5,12 @@ from collections import defaultdict
 import pandas as pd
 import csv
 import numpy as np
+from scipy.spatial.distance import cosine
 
 
-
+# https://github.com/FrancescoPeriti/CSSDetection 
 # https://github.com/FrancescoPeriti/CSSDetection/blob/main/src/computational_annotation.py 
+
 
 
 
@@ -45,16 +47,16 @@ def get_computational_annotation(dataset, batch_size=16, max_length=512):
     # target words 
     words = sorted(os.listdir(f'{dataset}/data/'))
 
-    # Embeddings for sentences <s_1, s_2>
+    # Embeddings for sentences <s_1, s_2> (E[word] = (E_1, E_2), E_1 is a list of )     # TODO: comment
     E = dict()
 
     # load embedding model
     model = WordTransformer('pierluigic/xl-lexeme', device='cuda')  
     layer='tuned'
 
-    # Dataframe of judgements and uses for every target word 
-    dfs = list() 
-    scores = defaultdict(list)              # value is empty list if the key has not been set -> no Key Error 
+    
+    dfs = list()                            # for every word dataframe of mean human judgements and uses for every target word 
+    scores = defaultdict(list)              # for every word list of edge weight predictions 
 
     for word in words:
         # read in uses 
@@ -78,7 +80,7 @@ def get_computational_annotation(dataset, batch_size=16, max_length=512):
 
 
         # join the two dataframes 
-        # (expand identifier 1 and 2 in judgements with context, indexes_target_token and grouping of the respective use)
+        # (join uses and judgements)
         # (df.columns.tolist() = ['identifier1', 'identifier2', 'annotator', 'judgment', 
         # 'context1', 'indexes_target_token1', 'grouping1', 'context2', 'indexes_target_token2', 'grouping2'])
         df = judgments.merge(uses, left_on='identifier1', right_on='identifier')
@@ -100,6 +102,53 @@ def get_computational_annotation(dataset, batch_size=16, max_length=512):
              'grouping1', 'grouping2'])['judgment'].mean().reset_index()
         dfs.append(df)
         examples = list()
+
+        # split df 
+        # identifier1 nodes (in judgments) (columns ['identifier', 'context', 'grouping', 'indexes_target_token'])
+        df1 = df[['identifier1', 'context1', 'grouping1', 'indexes_target_token1']].reset_index(drop=True) 
+        df1 = df1.rename(columns={c: c[:-1] for c in df1.columns}) 
+        # identifier2 nodes (in judgments) (columns ['identifier', 'context', 'grouping', 'indexes_target_token'])
+        df2 = df[['identifier2', 'context2', 'grouping2', 'indexes_target_token2']].reset_index(drop=True)
+        df2 = df2.rename(columns={c: c[:-1] for c in df2.columns})
+
+
+
+        # embeddings extraction 
+        #E_1, E_2 = model.encode(df1), model.encode(df2)
+        #E[word] = (E_1, E_2)
+        
+        E1, E2 = list(), list()
+        for j, row in df1.iterrows():
+            row1, row2 = pd.DataFrame([dict(row)]), pd.DataFrame([dict(df2.loc[j])])    # nodes 1 and 2 of one human annotated edge
+
+
+            context1, context2 = row1.loc[0, 'context'], row2.loc[0, 'context'] 
+            indexes1, indexes2 = row1.loc[0, 'indexes_target_token'], row2.loc[0, 'indexes_target_token']
+            indexes1, indexes2 = list(map(int, indexes1.split(':'))), list(map(int, indexes2.split(':')))
+
+            examples_1= InputExample(texts=context1, positions=indexes1)
+            examples_2= InputExample(texts=context2, positions=indexes2)
+
+
+            e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
+            try:
+                e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
+            except:
+                # one sentence is too long
+                continue                                    # no edge weight prediction if the sentence of one use is too long 
+            else:
+                E1.append(e_1)      # list of all embeddings of identifier1 nodes 
+                E2.append(e_2)
+                # add edge weight prediction for word and identifier 1 and 2 to dictionary 'scores' 
+                scores[word].append(dict(identifier1=row1['identifier'], identifier2=row2['identifier'], judgment=1-cosine(E1[-1], E2[-1])))
+
+        try:
+            E[word] = (np.array(E1), np.array(E2))          # all identifer 1 embeddings, all identifier 2 embeddings
+        except:
+            continue
+        
+        
+
 
 
 
