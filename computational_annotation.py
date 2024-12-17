@@ -6,6 +6,8 @@ import pandas as pd
 import csv
 import numpy as np
 from scipy.spatial.distance import cosine
+from pathlib import Path
+import dill 
 
 
 # https://github.com/FrancescoPeriti/CSSDetection 
@@ -40,14 +42,14 @@ def processing(dataset, uses, word):
 
 
 """
-Extract embeddings for word usages in C1 and C2.
+Extract embeddings for word usages and predicted edge weights 
 """
-def get_computational_annotation(dataset, batch_size=16, max_length=512):
+def get_computational_annotation(dataset):
 
     # target words 
     words = sorted(os.listdir(f'{dataset}/data/'))
 
-    # Embeddings for sentences <s_1, s_2> (E[word] = (E_1, E_2), E_1 is a list of )     # TODO: comment
+    # Embeddings for sentences <s_1, s_2> (E[word] = (E_1, E_2), all identifer 1 embeddings, all identifier 2 embeddings)
     E = dict()
 
     # load embedding model
@@ -55,7 +57,7 @@ def get_computational_annotation(dataset, batch_size=16, max_length=512):
     layer='tuned'
 
     
-    dfs = list()                            # for every word dataframe of mean human judgements and uses for every target word 
+    dfs = list()                            # for every word dataframe of mean human judgements and uses 
     scores = defaultdict(list)              # for every word list of edge weight predictions 
 
     for word in words:
@@ -130,7 +132,7 @@ def get_computational_annotation(dataset, batch_size=16, max_length=512):
             examples_2= InputExample(texts=context2, positions=indexes2)
 
 
-            e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
+            #e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
             try:
                 e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
             except:
@@ -140,14 +142,23 @@ def get_computational_annotation(dataset, batch_size=16, max_length=512):
                 E1.append(e_1)      # list of all embeddings of identifier1 nodes 
                 E2.append(e_2)
                 # add edge weight prediction for word and identifier 1 and 2 to dictionary 'scores' 
-                scores[word].append(dict(identifier1=row1['identifier'], identifier2=row2['identifier'], judgment=1-cosine(E1[-1], E2[-1])))
+                scores[word].append(dict(identifier1=row1['identifier'].iloc[0], identifier2=row2['identifier'].iloc[0], judgment=1-cosine(E1[-1], E2[-1])))
 
         try:
             E[word] = (np.array(E1), np.array(E2))          # all identifer 1 embeddings, all identifier 2 embeddings
         except:
             continue
-        
-        
+
+        print('.')
+
+    # save scores 
+    ds = os.path.basename(dataset)
+    Path(f'./scores/{ds}').mkdir(exist_ok=True, parents=True)
+    with open(f'./scores/{ds}/scores.dill', mode='+wb') as f:
+        dill.dump(scores, f)  
+
+    print('-----')
+
 
 
 
@@ -157,4 +168,5 @@ def get_computational_annotation(dataset, batch_size=16, max_length=512):
 
 
 if __name__=="__main__":
+
     get_computational_annotation("./data/dwug_de")
