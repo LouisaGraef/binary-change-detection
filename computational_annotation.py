@@ -54,7 +54,6 @@ def get_computational_annotation(dataset):
 
     # load embedding model
     model = WordTransformer('pierluigic/xl-lexeme', device='cuda')  
-    layer='tuned'
 
     
     dfs = list()                            # for every word dataframe of mean human judgements and uses 
