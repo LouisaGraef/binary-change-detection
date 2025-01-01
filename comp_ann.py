@@ -73,7 +73,7 @@ def get_human_judgments(dataset,word,words):
 
     # take the mean judgment of annotators (for every edge)
     # (judgments.columns.tolist() = ['identifier1', 'identifier2', 'judgment'])
-    judgments = judgments.groupby(
+    judgments = judgments.sort_values(['identifier1', 'identifier2']).groupby(
         ['identifier1', 'identifier2'])['judgment'].mean().reset_index()
 
 
@@ -150,7 +150,7 @@ def get_computational_annotation(dataset):
             continue
 
         edge_preds[word]= judgments
-        # print(judgments.columns.tolist())         # ['identifier1', 'identifier2', 'judgment', 'edge_preds']
+        # print(judgments.columns.tolist())         # ['identifier1', 'identifier2', 'judgment', 'edge_pred']
 
         print('.')
 

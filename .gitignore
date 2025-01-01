@@ -3,3 +3,6 @@ data/
 stats/ 
 __pycache__/
 scores/
+classes/
+edge_preds/
+prob_dists/
