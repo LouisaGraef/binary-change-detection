@@ -173,13 +173,13 @@ def get_computational_annotation(dataset):
 
 if __name__=="__main__":
     
-    get_computational_annotation("./data/dwug_de")
+    # get_computational_annotation("./data/dwug_de")
 
-    """
+    
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       # no dwug_la 
     datasets = ["./data/" + dataset for dataset in datasets]
 
     for dataset in datasets:
         get_computational_annotation(dataset)
-    """
+    

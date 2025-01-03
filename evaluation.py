@@ -17,6 +17,7 @@ from sklearn import metrics
 import numpy as np
 from collections import defaultdict
 from scipy.spatial.distance import jensenshannon
+import itertools
 
 
 
@@ -218,16 +219,31 @@ def generate_graph(word_edge_preds):
     return graph
 
 
+"""
+Cluster graph
+"""
+def cluster_graph(graph, clustering_method, paper_reproduction, parameters):
+    if "correlation" in clustering_method:
+        graph, labels, classes_sets = cluster_graph_cc(graph, paper_reproduction, parameters)
+    
+    return graph, labels, classes_sets
+
 
 """
 Cluster Graph with Correlation Clustering, store cluster_labels (dataframe with columns ['identifier', 'cluster'])
 """
-def cluster_graph(graph):
+def cluster_graph_cc(graph, paper_reproduction, parameters):
     
     # Cluster Graph 
     classes = []
+    max_attempts = parameters[1]
+    max_iters = parameters[2]
     for init in range(1):
-        classes = cluster_correlation_search(graph, s=20, max_attempts=2000, max_iters=50000, initial=classes)
+        if paper_reproduction:
+            classes = cluster_correlation_search(graph, s=20, max_attempts=max_attempts, max_iters=max_iters, initial=classes)
+        else:
+            # TODO: shift weights by parameters[0]
+            classes = cluster_correlation_search(graph, s=10, max_attempts=max_attempts, max_iters=max_iters, initial=classes)
 
     # print(classes)          # Tupel: 1st element list of sets of nodes, 2nd element dict with parameters
 
@@ -236,7 +252,7 @@ def cluster_graph(graph):
     for k, cl in enumerate(classes[0]):     # enumerate sets of nodes
         for idx in cl:                   # enumerate nodes of cluster k 
             labels.append(dict(identifier=idx.split('###')[0], cluster=k))
-    labels = pd.DataFrame(labels).sort_values('identifier')                  # convert labels from list of dicts to dataframe
+    labels = pd.DataFrame(labels).sort_values('identifier').reset_index(drop=True)                  # convert labels from list of dicts to dataframe
 
     classes_sets = classes[0]           # list of sets of nodes that are in the same cluster
 
@@ -273,7 +289,7 @@ def get_cluster_distributions(classes_sets):
 Get Graded Change Scores with Jensenshannon distance, 
 Evaluate predicted Graded Change Scores with Spearman correlation coefficient 
 """
-def LSC(clusters_dists, gold_lsc_df):
+def GCD(clusters_dists, gold_lsc_df):
     # cluster_dists: list of cluster probability distributions (for every word prob = [[],[]])
     glsc_pred = np.array([jensenshannon(d[0], d[1]) for d in clusters_dists])        # graded lsc value for every word 
     # gold_lsc_df columns: ['lemma', 'change_graded']
@@ -282,42 +298,62 @@ def LSC(clusters_dists, gold_lsc_df):
     
 
 
+"""
+Evaluate the model performance on WIC (edges evaluation with Spearman Correlation)
+"""
+def evaluate_wic(datasets):
+    output_file=f"./stats/wic_evaluation.tsv"
+    header = 'dataset\tWIC_spearman_correlation'
+    lines = [header+ '\n']
+    
+    print("\nWIC evaluation with Spearman Correlation:\n")
+    for dataset in datasets:
+        # Read data 
+        edge_preds, gold_clusters, gold_lsc_df = read_data(dataset)
+        # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
+
+        # Evaluate WIC (edge weight predictions) with Spearman correlation 
+        wic_spearman = WiC(edge_preds)
+        
+        # Add WIC Spearman Score to record 
+        ds = dataset.replace("./data/", "")
+        new_line = "\t".join([str(i) for i in [ds, wic_spearman[0].round(3)]]) + '\n'
+        lines.append(new_line)
+        print(new_line)
+    
+    # Save WIC evaluation results to output_file="./stats/model_evaluation.tsv"
+    with open(output_file, mode='w', encoding='utf-8') as f:
+        f.writelines(lines)
+
 
 
 """
 Evaluates the model performance on WIC (edges evaluation with Sprearman Correlation),
 WSI (Correlation Clustering evaluation with ARI and Purity) and Graded Change Detection (Spearman Correlation)
 """
-def evaluate_model(dataset, paper_reproduction, output_file="./stats/model_evaluation.tsv", df_output_file="./parameter_grid/parameter_grid.tsv"):
-    
+def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_list):
 
-    header = 'dataset\ttask\tscore'
+    ds = dataset.replace("./data/", "")
 
-    # Parameter grid for crossvalidation (Clustering: Mapping from node identifiers to Cluster ID (dictionary))
-    parameter_grid = pd.DataFrame(columns=['paramater_combination', 'word', 'ARI', 'GC', 'BC', 'clustering'])
+    if paper_reproduction==True:                                    # Evaluation results on whole dataset (WSI and GCD)
+        output_file=f"./stats/model_evaluation.tsv"
+        header = 'dataset\tWSI_ARI\tWSI_Purity\tGCD_Spearman_Correlation'
 
+        # evaluation file output
+        if Path(output_file).stat().st_size == 0:       # empty file
+            paper_eval_lines = [header+ '\n']
+            print('\n\nWSI and GCD evaluation for Paper reproduction: \n')
+            print(header + '\n')
+        else:
+            paper_eval_lines = open(output_file, mode='r', encoding='utf-8').readlines()
+        pass
 
-    # file output
-    if Path(output_file).stat().st_size == 0:       # empty file
-        lines = [header+ '\n']
-    else:
-        lines = open(output_file, mode='r', encoding='utf-8').readlines()
-    pass
 
     # Read data 
     edge_preds, gold_clusters, gold_lsc_df = read_data(dataset)
     # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
     # print(gold_clusters[0].columns.tolist())      # ['identifier', 'cluster']
     # print(gold_lsc_df.columns.tolist())       # ['lemma', 'change_graded']
-
-    # Evaluate WIC (edge weight predictions) with Spearman correlation 
-    wic_spearman = WiC(edge_preds)
-
-
-    # Add WIC Spearman Score to record 
-    record = "\t".join([str(i) for i in [dataset, 'wic', wic_spearman[0].round(3)]]) + '\n'
-    lines.append(record)
-    print(record)
     
 
     # Standardize edge weight predictions -> mean of predicted edge weights is 0, standard deviation is 1 (only relevant for paper reproduciton)
@@ -325,6 +361,8 @@ def evaluate_model(dataset, paper_reproduction, output_file="./stats/model_evalu
         edge_preds = standardize_edge_preds(edge_preds)
 
     
+    # Parameter grid for crossvalidation (Clustering: Mapping from node identifiers to Cluster ID (dictionary))
+    parameter_grid = pd.DataFrame(columns=['parameter_combination', 'word', 'ARI', 'GC', 'BC', 'clustering'])
 
     
     # print(edge_preds[0].columns.tolist())  # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2'] for first word
@@ -333,71 +371,92 @@ def evaluate_model(dataset, paper_reproduction, output_file="./stats/model_evalu
     clusters_metrics = defaultdict(list)    # cluster metrics (evaluation metrics (ARI, Purity)) 
 
     words = sorted(os.listdir(f'{dataset}/data/'))
+    
+    combinations = list(itertools.product(*parameter_list))     # all parameter combinations
 
-    for i, word in enumerate(words):                    # iterate over words
-        word_edge_preds = edge_preds[i]
-        graph = generate_graph(word_edge_preds)         # generate graph with predicted edge weights for word i
-        graph, cluster_labels, classes_sets = cluster_graph(graph)    # cluster graph (cluster_labels: dataframe with columns ['identifier', 'cluster'])
-        
-        # Evaluate clustering with ARI and Purity
-        gold_clusters[i] = gold_clusters[i].sort_values('identifier')
+    for comb in combinations:
+        for i, word in enumerate(words):                    # iterate over words
+            word_edge_preds = edge_preds[i]
+            graph = generate_graph(word_edge_preds)         # generate graph with predicted edge weights for word i
+            # cluster graph (cluster_labels: dataframe with columns ['identifier', 'cluster'])
+            graph, cluster_labels, classes_sets = cluster_graph(graph, clustering_method, paper_reproduction, comb)    
+            
+            # Evaluate clustering with ARI and Purity
+            gold_clusters[i] = gold_clusters[i].sort_values('identifier')
 
-        clusters_metrics['adjusted_rand_score'].append(adjusted_rand_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
-        clusters_metrics['purity'].append(purity_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
+            clusters_metrics['adjusted_rand_score'].append(adjusted_rand_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
+            clusters_metrics['purity'].append(purity_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
 
-        # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
-        freq_dist, prob_dist = get_cluster_distributions(classes_sets)
-        cluster_dists.append(prob_dist)     
+            # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
+            freq_dist, prob_dist = get_cluster_distributions(classes_sets)
+            cluster_dists.append(prob_dist)     # cluster distributions for LSC 
+
+            # Add evaluation results to parameter_grid
+            row_ARI = clusters_metrics['adjusted_rand_score'][-1]
+            # glsc_pred = jensenshannon(prob_dist[0], prob_dist[1])
+            clustering = cluster_labels.set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
+            new_grid_row = {'parameter_combination': comb, 'word': word, 'ARI': row_ARI, 'GC': "-", 'BC': "-", 'clustering': clustering}
+            parameter_grid.loc[len(parameter_grid)] = new_grid_row
 
 
-    # take mean values across all words cluster metrics 
-    # clusters_metrics: {'adjusted_rand_score': [...], 'purity': [...]}
-    clusters_metrics = {m: np.mean(v) for m, v in clusters_metrics.items()}   
 
-    print(clusters_metrics)
+    # Paper reproduction: evaluate on whole dataset (mean ARI, mean Purity, GCD with Spearman Correlation)
+    if paper_reproduction:
+        # take mean values across all words cluster metrics 
+        # clusters_metrics: {'adjusted_rand_score': [...], 'purity': [...]}
+        clusters_metrics = {m: np.mean(v) for m, v in clusters_metrics.items()}         # WSI: ARI, Purity
 
-    lsc_spearman = LSC(cluster_dists, gold_lsc_df)
-    print(lsc_spearman)
+        gcd_spearman = GCD(cluster_dists, gold_lsc_df)                                 # GCD: Spearman correlation
 
-    quit()
-
-    # Save clusters and cluster probability distributions 
-    ds = os.path.basename(dataset)
-    Path(f'./prob_dists/{ds}').mkdir(exist_ok=True, parents=True)
-    Path(f'./classes/{ds}').mkdir(exist_ok=True, parents=True)
-
-    with open(f'./prob_dists/{ds}/prob_dists.dill', mode='+wb') as f:
-        dill.dump(clusters_dists, f)
-        
-    with open(f'./classes/{ds}/classes.dill', mode='+wb') as f:
-        dill.dump(clusters_labels, f)
-
-    # Add WSI evaluation results to record 
-    for metric in clusters_metrics:
-        record = "\t".join([str(i) for i in [dataset, f'wsi-{metric}', clusters_metrics[metric].round(3)]]) + '\n'
-        lines.append(record)
+        # header = 'dataset\tWSI_ARI\tWSI_Purity\tGCD_Spearman_Correlation'             # Add paper evaluation results to paper_eval_lines
+        record = "\t".join([str(i) for i in [ds, clusters_metrics['adjusted_rand_score'].round(3), 
+                                             clusters_metrics['purity'].round(3), gcd_spearman[0].round(3)]]) + '\n'
+        paper_eval_lines.append(record)
         print(record)
 
+        """
+        # Save clusters and cluster probability distributions 
+        ds = os.path.basename(dataset)
+        Path(f'./prob_dists/{ds}').mkdir(exist_ok=True, parents=True)
+        Path(f'./classes/{ds}').mkdir(exist_ok=True, parents=True)
 
-    # Get Graded Change predictions and evaluate, add evaluation results to record
-    lsc_spearman = LSC(clusters_dists, gold_lsc_df)
-    record = "\t".join([str(i) for i in [dataset, 'graded lsc', lsc_spearman[0].round(3)]]) + '\n'
-    lines.append(record)
-    print(record)
-    
-    
+        with open(f'./prob_dists/{ds}/prob_dists.dill', mode='+wb') as f:
+            dill.dump(clusters_dists, f)
+            
+        with open(f'./classes/{ds}/classes.dill', mode='+wb') as f:
+            dill.dump(clusters_labels, f)
+        """
 
-    # Save WIC and WSI evaluation results to output_file="./stats/model_evaluation.tsv"
-    with open(output_file, mode='w', encoding='utf-8') as f:
-        f.writelines(lines)
+        # Save WSI and GCD evaluation results to output_file="./stats/model_evaluation.tsv"
+        with open(output_file, mode='w', encoding='utf-8') as f:
+            f.writelines(paper_eval_lines)
 
 
+    # Save Parameter grid of dataset (and clustering method)
+    df_output_file=f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv"
+    os.makedirs(os.path.dirname(df_output_file), exist_ok=True)
+    parameter_grid.to_csv(df_output_file, sep='\t', index=False)
 
 
 if __name__=="__main__":
+    
+    # Evalation with WIC;WSI;GCD 
+    datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
+                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       # no dwug_la 
+    datasets = ["./data/" + dataset for dataset in datasets]
+    
+    # WIC evaluation for all datasets 
+    evaluate_wic(datasets)
+    
+    # WSI and LSC evaluation 
+
     output_file="./stats/model_evaluation.tsv"
-    paper_reproduction = True
     # Delete content of output_file="./stats/model_evaluation.tsv"
     with open(output_file, mode='w', encoding='utf-8') as f:
         pass
-    evaluate_model("./data/dwug_de", paper_reproduction)
+
+    # parameter=[s=20, max_attempts=2000, max_iters=50000]  # s=max_clusters
+    parameter_list = [[20],[2000],[50000]]
+
+    for dataset in datasets:
+        evaluate_model(dataset, paper_reproduction=True, clustering_method="correlation_paper", parameter_list=parameter_list)
