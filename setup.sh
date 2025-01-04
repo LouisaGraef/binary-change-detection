@@ -10,7 +10,20 @@ else
     git clone $url                   # clones repository into new directory "WUGs"
 fi
 
-
+chmod 755 WUGs/scripts/*.sh
+mv WUGs/scripts/data2join.sh ./data2join.sh
+mv WUGs/scripts/data2join.py ./data2join.py
+mv WUGs/scripts/data2annotators.sh ./data2annotators.sh
+mv WUGs/scripts/data2annotators.py ./data2annotators.py
+mv WUGs/scripts/data2agr2.sh ./data2agr2.sh
+mv WUGs/scripts/data2agr2.py ./data2agr2.py
+mv WUGs/scripts/data2graph.sh ./data2graph.sh
+mv WUGs/scripts/data2graph.py ./data2graph.py
+mv WUGs/scripts/modules.py ./modules.py
+mv WUGs/scripts/constellation.py ./constellation.py
+mv WUGs/scripts/correlation.py ./correlation.py
+mv WUGs/scripts/krippendorff_.py ./krippendorff_.py
+chmod 755 ./*.sh
 
 
 
