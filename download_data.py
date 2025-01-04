@@ -11,22 +11,37 @@ import shutil
 """
 Downloads datasets into directory "./data", extracts downloaded zip files and deletes zip files. 
 """
-def download_datasets(zipurls):
+def download_datasets(zipurls, paper_datasets):
     # create data directory
-    if os.path.exists("./data"):
-        shutil.rmtree("./data")
-    os.makedirs("./data")
+    if paper_datasets:
+        if os.path.exists("./paper_data"):
+            shutil.rmtree("./paper_data")
+        os.makedirs("./paper_data")
+    else:
+        if os.path.exists("./data"):
+            shutil.rmtree("./data")
+        os.makedirs("./data")
 
     # download data 
     for zipurl in zipurls:
         zipresponse = requests.get(zipurl)   # download zip file from URL
-        zipfile_path = "./data/zipdata.zip"
+        if paper_datasets:
+            zipfile_path = "./paper_data/zipdata.zip"
+        else:
+            zipfile_path = "./data/zipdata.zip"
+
         with open (zipfile_path, "wb") as f:   # create new file
             f.write(zipresponse.content)        # write URL zip content to new zip file 
         print("ZIP file downloaded.")
-        with ZipFile("./data/zipdata.zip") as zf:      # open created zip file 
-            zf.extractall(path="./data")                  # extract zip file to "./data" 
+
+        if paper_datasets:
+            with ZipFile("./paper_data/zipdata.zip") as zf:      # open created zip file 
+                zf.extractall(path="./paper_data")                  # extract zip file to "./data" 
+        else:
+            with ZipFile("./data/zipdata.zip") as zf:      # open created zip file 
+                zf.extractall(path="./data")                  # extract zip file to "./data" 
         print("ZIP file extracted.")
+
         os.remove(zipfile_path)                # delete zip file
         print("ZIP file deleted.")
 
@@ -43,7 +58,7 @@ def download_new_datasets():
                 "https://zenodo.org/records/14028906/files/dwug_sv.zip?download=1", "https://zenodo.org/records/5255228/files/dwug_la.zip?download=1",
                 "https://zenodo.org/records/6433667/files/dwug_es.zip?download=1", "https://zenodo.org/records/10023263/files/chiwug.zip?download=1",
                 "https://github.com/ltgoslo/nor_dia_change/archive/refs/heads/main.zip", "https://zenodo.org/records/14041715/files/dwug_de_sense.zip?download=1"]
-    download_datasets(zipurls)
+    download_datasets(zipurls, paper_datasets=False)
 
 
 
@@ -57,7 +72,7 @@ def download_paper_datasets():
                       "https://zenodo.org/records/7389506/files/dwug_sv.zip?download=1", "https://zenodo.org/records/5255228/files/dwug_la.zip?download=1",
                 "https://zenodo.org/records/6433667/files/dwug_es.zip?download=1", "https://zenodo.org/records/10023263/files/chiwug.zip?download=1",
                 "https://github.com/ltgoslo/nor_dia_change/archive/refs/heads/main.zip"] 
-    download_datasets(datasets_paper_versions)
+    download_datasets(datasets_paper_versions, paper_datasets=True)
 
 
 

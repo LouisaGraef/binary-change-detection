@@ -10,6 +10,8 @@ from pathlib import Path
 import dill 
 from scipy.stats import spearmanr
 from model_evaluate import read_data
+import pickle
+import networkx as nx
 
 
 
@@ -44,9 +46,9 @@ def processing(dataset, uses, word):
 
 
 """
-get a dataframe of mean human judgements and uses for one word
+get a dataframe of mean human judgements and uses for one word (only for paper reproduction)
 """
-def get_human_judgments(dataset,word,words):
+def get_human_judgments_paper(dataset,word,words):
     
     # read in uses 
     uses = pd.read_csv(f'{dataset}/data/{word}/uses.csv', sep='\t', quoting=csv.QUOTE_NONE, encoding="utf-8")
@@ -88,11 +90,44 @@ def get_human_judgments(dataset,word,words):
 
 
 
+"""
+get a dataframe of mean human judgements and uses for one word
+"""
+def get_human_judgment(dataset,word,words):
+    
+    # read in uses 
+    uses = pd.read_csv(f'{dataset}/data/{word}/uses.csv', sep='\t', quoting=csv.QUOTE_NONE, encoding="utf-8")
+
+    # read in human judgements from graphs
+    with open(f'{dataset}/graphs/{word}', 'rb') as f:
+        gold_graph = pickle.load(f)
+    
+    judgments_list = [(u, v, data['weight']) for u, v, data in gold_graph.edges(data=True)]
+    judgments = pd.DataFrame(judgments_list, columns=['identifier1', 'identifier2', 'judgment'])
+
+
+    # remove useless columns 
+    uses = processing(dataset, uses, words)
+    
+    uses = uses[['identifier', 'context', 'indexes_target_token', 'grouping']]
+    uses['identifier'] = uses['identifier'].astype(str)
+
+
+    # uses of all identifier1 nodes, uses of all identifier2 nodes
+    # (df1.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
+    # (df2.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
+    df1 = judgments.merge(uses, left_on='identifier1', right_on='identifier').drop(columns=['identifier1', 'identifier2', 'judgment'])
+    df2 = judgments.merge(uses, left_on='identifier2', right_on='identifier').drop(columns=['identifier1', 'identifier2', 'judgment'])
+
+    return judgments, df1, df2
+
+
+
 
 """
 Extract embeddings for word usages and predicted edge weights 
 """
-def get_computational_annotation(dataset):
+def get_computational_annotation(dataset, paper_reproduction):
 
     # target words 
     words = sorted(os.listdir(f'{dataset}/data/'))
@@ -107,11 +142,14 @@ def get_computational_annotation(dataset):
 
     for word in words:
 
-        judgments, df1, df2 = get_human_judgments(dataset,word,words)
-        # (judgments.columns.tolist() = ['identifier1', 'identifier2', 'judgment'])
-        # (df1.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
-        # (df2.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
-        # dfs.append(judgments)
+        if paper_reproduction:
+            judgments, df1, df2 = get_human_judgments_paper(dataset,word,words)
+            # (judgments.columns.tolist() = ['identifier1', 'identifier2', 'judgment'])
+            # (df1.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
+            # (df2.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
+            # dfs.append(judgments)
+        else:
+            judgments, df1, df2 = get_human_judgment(dataset,word,words)
         
         E1, E2 = list(), list()     # embeddings of identifier1 nodes, embeddings of identifier2 nodes
 
@@ -155,10 +193,16 @@ def get_computational_annotation(dataset):
         print('.')
 
     # save edge_preds 
-    ds = os.path.basename(dataset)
-    Path(f'./edge_preds/{ds}').mkdir(exist_ok=True, parents=True)
-    with open(f'./edge_preds/{ds}/edge_preds.dill', mode='+wb') as f:
-        dill.dump(edge_preds, f)  
+    if paper_reproduction:
+        ds = dataset.replace("./paper_data/", "")
+        Path(f'./paper_edge_preds/{ds}').mkdir(exist_ok=True, parents=True)
+        with open(f'./paper_edge_preds/{ds}/paper_edge_preds.dill', mode='+wb') as f:
+            dill.dump(edge_preds, f)  
+    else: 
+        ds = dataset.replace("./data/", "")
+        Path(f'./edge_preds/{ds}').mkdir(exist_ok=True, parents=True)
+        with open(f'./edge_preds/{ds}/edge_preds.dill', mode='+wb') as f:
+            dill.dump(edge_preds, f)  
 
     print('-----')
 
@@ -173,12 +217,13 @@ def get_computational_annotation(dataset):
 
 if __name__=="__main__":
     
-    # get_computational_annotation("./data/dwug_de")
+    get_computational_annotation("./data/dwug_de", paper_reproduction=False)
+    quit()
 
     
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       # no dwug_la 
-    datasets = ["./data/" + dataset for dataset in datasets]
+    datasets = ["./paper_data/" + dataset for dataset in datasets]
 
     for dataset in datasets:
         get_computational_annotation(dataset)

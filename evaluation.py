@@ -69,13 +69,17 @@ def load_gold_lsc(dataset):
 """
 Read data (edge predictions, gold edge weights, gold clusters, gold graded change) 
 """
-def read_data(dataset):
+def read_data(dataset, paper_reproduction):
     # read targets
     words = sorted(os.listdir(f'{dataset}/data/'))
     
     # read edge weight gold judgments and predictions 
-    ds = os.path.basename(dataset)
-    edge_preds = dill.load(open(f'./edge_preds/{ds}/edge_preds.dill', mode='rb'))   # dict: for every word dataframe (identifier1, identifier2, judgment, edge_pred)
+    if paper_reproduction:
+        ds = dataset.replace("./paper_data/", "")
+        edge_preds = dill.load(open(f'./paper_edge_preds/{ds}/paper_edge_preds.dill', mode='rb'))   # dict: for every word dataframe (identifier1, identifier2, judgment, edge_pred)
+    else:
+        ds = dataset.replace("./data/", "")
+        edge_preds = dill.load(open(f'./edge_preds/{ds}/edge_preds.dill', mode='rb'))   # dict: for every word dataframe (identifier1, identifier2, judgment, edge_pred)
     words = [word for word in words if word in edge_preds]
     edge_preds = [edge_preds[word] for word in words]        # list of dataframes (['identifier1', 'identifier2', 'judgment', 'edge_pred'] for every word)
     
@@ -301,27 +305,34 @@ def GCD(clusters_dists, gold_lsc_df):
 """
 Evaluate the model performance on WIC (edges evaluation with Spearman Correlation)
 """
-def evaluate_wic(datasets):
-    output_file=f"./stats/wic_evaluation.tsv"
+def evaluate_wic(datasets, paper_reproduction):
     header = 'dataset\tWIC_spearman_correlation'
     lines = [header+ '\n']
     
     print("\nWIC evaluation with Spearman Correlation:\n")
     for dataset in datasets:
         # Read data 
-        edge_preds, gold_clusters, gold_lsc_df = read_data(dataset)
+        edge_preds, gold_clusters, gold_lsc_df = read_data(dataset, paper_reproduction=True)
         # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
 
         # Evaluate WIC (edge weight predictions) with Spearman correlation 
         wic_spearman = WiC(edge_preds)
         
         # Add WIC Spearman Score to record 
-        ds = dataset.replace("./data/", "")
+        if paper_reproduction:
+            ds = dataset.replace("./paper_data/", "")
+        else:
+            ds = dataset.replace("./data/", "")
         new_line = "\t".join([str(i) for i in [ds, wic_spearman[0].round(3)]]) + '\n'
         lines.append(new_line)
         print(new_line)
     
-    # Save WIC evaluation results to output_file="./stats/model_evaluation.tsv"
+    if paper_reproduction:
+        output_file=f"./stats/paper_wic_evaluation.tsv"
+    else:
+        output_file=f"./stats/wic_evaluation.tsv"
+    
+    # Save WIC evaluation results to output_file
     with open(output_file, mode='w', encoding='utf-8') as f:
         f.writelines(lines)
 
@@ -333,10 +344,13 @@ WSI (Correlation Clustering evaluation with ARI and Purity) and Graded Change De
 """
 def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_list):
 
-    ds = dataset.replace("./data/", "")
+    if paper_reproduction:
+        ds = dataset.replace("./paper_data/", "")
+    else:
+        ds = dataset.replace("./data/", "")
 
     if paper_reproduction==True:                                    # Evaluation results on whole dataset (WSI and GCD)
-        output_file=f"./stats/model_evaluation.tsv"
+        output_file=f"./stats/paper_model_evaluation.tsv"
         header = 'dataset\tWSI_ARI\tWSI_Purity\tGCD_Spearman_Correlation'
 
         # evaluation file output
@@ -350,7 +364,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
 
     # Read data 
-    edge_preds, gold_clusters, gold_lsc_df = read_data(dataset)
+    edge_preds, gold_clusters, gold_lsc_df = read_data(dataset, paper_reproduction=True)
     # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
     # print(gold_clusters[0].columns.tolist())      # ['identifier', 'cluster']
     # print(gold_lsc_df.columns.tolist())       # ['lemma', 'change_graded']
@@ -427,7 +441,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             dill.dump(clusters_labels, f)
         """
 
-        # Save WSI and GCD evaluation results to output_file="./stats/model_evaluation.tsv"
+        # Save WSI and GCD evaluation results to output_file="./stats/paper_model_evaluation.tsv"
         with open(output_file, mode='w', encoding='utf-8') as f:
             f.writelines(paper_eval_lines)
 
@@ -443,15 +457,15 @@ if __name__=="__main__":
     # Evalation with WIC;WSI;GCD 
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       # no dwug_la 
-    datasets = ["./data/" + dataset for dataset in datasets]
+    datasets = ["./paper_data/" + dataset for dataset in datasets]
     
     # WIC evaluation for all datasets 
     evaluate_wic(datasets)
     
     # WSI and LSC evaluation 
 
-    output_file="./stats/model_evaluation.tsv"
-    # Delete content of output_file="./stats/model_evaluation.tsv"
+    output_file="./stats/paper_model_evaluation.tsv"
+    # Delete content of output_file="./stats/paper_model_evaluation.tsv"
     with open(output_file, mode='w', encoding='utf-8') as f:
         pass
 

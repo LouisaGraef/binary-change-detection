@@ -6,3 +6,8 @@ scores/
 classes/
 edge_preds/
 prob_dists/
+paper_data/
+paper_edge_preds/
+parameter_grids/
+stats_2/
+data2*
