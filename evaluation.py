@@ -18,6 +18,9 @@ import numpy as np
 from collections import defaultdict
 from scipy.spatial.distance import jensenshannon
 import itertools
+from utils import transform_edge_weights
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
 
 
@@ -184,7 +187,13 @@ def WiC(edge_preds):
     for df in edge_preds:
         y_pred.extend(df.edge_pred.values.tolist())
         y_true.extend(df.judgment.values.tolist())
-    return spearmanr(y_pred, y_true)
+    # Filter nan values out
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
+    valid_indices = ~np.isnan(y_true) & ~np.isnan(y_pred)
+    filtered_y_true = y_true[valid_indices]
+    filtered_y_pred = y_pred[valid_indices]
+    return spearmanr(filtered_y_pred, filtered_y_true)
 
 
 
@@ -228,13 +237,16 @@ Cluster graph
 """
 def cluster_graph(graph, clustering_method, paper_reproduction, parameters):
     if "correlation" in clustering_method:
-        graph, labels, classes_sets = cluster_graph_cc(graph, paper_reproduction, parameters)
+        labels, classes_sets = cluster_graph_cc(graph, paper_reproduction, parameters)
+    elif clustering_method=="k-means":
+        labels, classes_sets = cluster_graph_kmeans(graph,parameters)
     
-    return graph, labels, classes_sets
+    return labels, classes_sets
 
 
 """
-Cluster Graph with Correlation Clustering, store cluster_labels (dataframe with columns ['identifier', 'cluster'])
+Cluster Graph with Correlation Clustering, return cluster_labels (dataframe with columns ['identifier', 'cluster'])
+parameters[0] = edge_shift_value, parameters[1] = max_attempts, parameters[2] = max_iters
 """
 def cluster_graph_cc(graph, paper_reproduction, parameters):
     
@@ -246,8 +258,10 @@ def cluster_graph_cc(graph, paper_reproduction, parameters):
         if paper_reproduction:
             classes = cluster_correlation_search(graph, s=20, max_attempts=max_attempts, max_iters=max_iters, initial=classes)
         else:
-            # TODO: shift weights by parameters[0]
-            classes = cluster_correlation_search(graph, s=10, max_attempts=max_attempts, max_iters=max_iters, initial=classes)
+            threshold = parameters[0]
+            weight_transformation = lambda x: x-threshold
+            graph = transform_edge_weights(graph, transformation = weight_transformation) # shift edge weights
+            classes = cluster_correlation_search(graph, s=10, max_attempts=parameters[1], max_iters=parameters[2], initial=classes)
 
     # print(classes)          # Tupel: 1st element list of sets of nodes, 2nd element dict with parameters
 
@@ -260,7 +274,49 @@ def cluster_graph_cc(graph, paper_reproduction, parameters):
 
     classes_sets = classes[0]           # list of sets of nodes that are in the same cluster
 
-    return graph, labels, classes_sets
+    return labels, classes_sets
+
+
+"""
+Cluster Graph with K-means (determines number of clusters with silhouette score)
+"""
+def cluster_graph_kmeans(graph, parameters):
+    adj_matrix = nx.to_numpy_array(graph)        # Graph adjacency matrix as a numpy array
+    sil_scores = []
+    n_clusters = range(2, 11)
+    max_sil_score = -1
+    best_k = None
+
+    # Determine best number of clusters with Silhouette Score
+
+    for k in n_clusters:                                            # 2 to 10 clusters 
+        kmeans = KMeans(n_clusters=k).fit(adj_matrix)
+        labels = kmeans.labels_                                     # list of cluster ids
+        sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
+        sil_scores.append(sil_score)
+        # print(f"Silhouette score for {k} clusters: {sil_score}")
+        if sil_score > max_sil_score:
+            max_sil_score = sil_score
+            best_k = k
+
+    # Cluster Adjacency Matrix with best number of clusters 
+    kmeans = KMeans(n_clusters=best_k).fit(adj_matrix)
+    labels = kmeans.labels_                                     
+    labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
+
+    classes_sets = [set() for i in range(best_k)]       # list with best_k sets 
+    for node, label in labels.items():
+        classes_sets[label].add(node)                   
+
+    labels = {key.split('###')[0]: value for key, value in labels.items()}
+    labels = pd.DataFrame(list(labels.items()), columns=['identifier', 'cluster']).sort_values('identifier').reset_index(drop=True) # labels as dataframe
+
+    print(f'Best number of clusters: {best_k} \nSilhouette score with {best_k} clusters: {max_sil_score}')
+    
+
+    return labels, classes_sets
+
+
 
 
 """
@@ -312,7 +368,7 @@ def evaluate_wic(datasets, paper_reproduction):
     print("\nWIC evaluation with Spearman Correlation:\n")
     for dataset in datasets:
         # Read data 
-        edge_preds, gold_clusters, gold_lsc_df = read_data(dataset, paper_reproduction=True)
+        edge_preds, gold_clusters, gold_lsc_df = read_data(dataset, paper_reproduction)
         # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
 
         # Evaluate WIC (edge weight predictions) with Spearman correlation 
@@ -364,7 +420,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
 
     # Read data 
-    edge_preds, gold_clusters, gold_lsc_df = read_data(dataset, paper_reproduction=True)
+    edge_preds, gold_clusters, gold_lsc_df = read_data(dataset, paper_reproduction=paper_reproduction)
     # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
     # print(gold_clusters[0].columns.tolist())      # ['identifier', 'cluster']
     # print(gold_lsc_df.columns.tolist())       # ['lemma', 'change_graded']
@@ -393,7 +449,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             word_edge_preds = edge_preds[i]
             graph = generate_graph(word_edge_preds)         # generate graph with predicted edge weights for word i
             # cluster graph (cluster_labels: dataframe with columns ['identifier', 'cluster'])
-            graph, cluster_labels, classes_sets = cluster_graph(graph, clustering_method, paper_reproduction, comb)    
+            cluster_labels, classes_sets = cluster_graph(graph, clustering_method, paper_reproduction, comb)    
             
             # Evaluate clustering with ARI and Purity
             gold_clusters[i] = gold_clusters[i].sort_values('identifier')
@@ -411,6 +467,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             clustering = cluster_labels.set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
             new_grid_row = {'parameter_combination': comb, 'word': word, 'ARI': row_ARI, 'GC': "-", 'BC': "-", 'clustering': clustering}
             parameter_grid.loc[len(parameter_grid)] = new_grid_row
+        print(comb)
 
 
 

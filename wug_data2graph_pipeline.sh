@@ -4,8 +4,8 @@
 # specify script directory
 scriptsdir=${0%/*}
 
-# specify data directory
-dir=./data/dwug_de
+# specify data directory (first parameter(dataset))
+dir=$1
 
 # load parameters
 
@@ -66,9 +66,9 @@ echo timestamp && date +%F_%T
 rm -rf $dir/data_joint
 rm -rf $dir/graphs
 rm -rf $dir/graphs1
-rm -rf $dir/clusters
-rm -rf $dir/stats
-rm -rf $dir/plots
+# rm -rf $dir/clusters
+# rm -rf $dir/stats
+# rm -rf $dir/plots
 
 # run pipeline
 source $scriptsdir/data2join.sh
