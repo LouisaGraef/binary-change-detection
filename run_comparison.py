@@ -63,14 +63,19 @@ if __name__=="__main__":
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="correlation", parameter_list=parameter_list) # create parameter grid
     """
+    parameter_list = [[1],[2],[3]]
+    """
     # K-means Clustering
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="k-means", parameter_list=parameter_list)   # create parameter grid
-
+    
     # Agglomerative Clustering
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="agglomerative", parameter_list=parameter_list)   # create parameter grid
+    """
+
 
     # Spectral Clustering
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="spectral", parameter_list=parameter_list)   # create parameter grid
+    quit()

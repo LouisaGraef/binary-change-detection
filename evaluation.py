@@ -19,8 +19,9 @@ from collections import defaultdict
 from scipy.spatial.distance import jensenshannon
 import itertools
 from utils import transform_edge_weights
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, AgglomerativeClustering, SpectralClustering
 from sklearn.metrics import silhouette_score
+
 
 
 
@@ -240,6 +241,10 @@ def cluster_graph(graph, clustering_method, paper_reproduction, parameters):
         labels, classes_sets = cluster_graph_cc(graph, paper_reproduction, parameters)
     elif clustering_method=="k-means":
         labels, classes_sets = cluster_graph_kmeans(graph,parameters)
+    elif clustering_method=="agglomerative":
+        labels, classes_sets = cluster_graph_agglomerative(graph,parameters)
+    elif clustering_method=="spectral":
+        labels, classes_sets = cluster_graph_spectral(graph,parameters)
     
     return labels, classes_sets
 
@@ -283,7 +288,7 @@ Cluster Graph with K-means (determines number of clusters with silhouette score)
 def cluster_graph_kmeans(graph, parameters):
     adj_matrix = nx.to_numpy_array(graph)        # Graph adjacency matrix as a numpy array
     sil_scores = []
-    n_clusters = range(2, 11)
+    n_clusters = range(2, min(11, len(graph.nodes)))
     max_sil_score = -1
     best_k = None
 
@@ -304,6 +309,7 @@ def cluster_graph_kmeans(graph, parameters):
     labels = kmeans.labels_                                     
     labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
 
+    # Get classes_sets, convert labels to df
     classes_sets = [set() for i in range(best_k)]       # list with best_k sets 
     for node, label in labels.items():
         classes_sets[label].add(node)                   
@@ -311,7 +317,89 @@ def cluster_graph_kmeans(graph, parameters):
     labels = {key.split('###')[0]: value for key, value in labels.items()}
     labels = pd.DataFrame(list(labels.items()), columns=['identifier', 'cluster']).sort_values('identifier').reset_index(drop=True) # labels as dataframe
 
-    print(f'Best number of clusters: {best_k} \nSilhouette score with {best_k} clusters: {max_sil_score}')
+    # print(f'Best number of clusters: {best_k} \nSilhouette score with {best_k} clusters: {max_sil_score}')
+    
+
+    return labels, classes_sets
+
+
+"""
+Cluster Graph with Agglomerative Clustering (determines number of clusters with silhouette score)
+"""
+def cluster_graph_agglomerative(graph, parameters):
+    adj_matrix = nx.to_numpy_array(graph)        # Graph adjacency matrix as a numpy array
+    sil_scores = []
+    n_clusters = range(2, min(11, len(graph.nodes)))
+    max_sil_score = -1
+    best_k = None
+
+    # Determine best number of clusters with Silhouette Score
+
+    for k in n_clusters:                                            # 2 to 10 clusters 
+        agglomerative = AgglomerativeClustering(n_clusters=k).fit(adj_matrix)
+        labels = agglomerative.labels_                                     # list of cluster ids
+        sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
+        sil_scores.append(sil_score)
+        # print(f"Silhouette score for {k} clusters: {sil_score}")
+        if sil_score > max_sil_score:
+            max_sil_score = sil_score
+            best_k = k
+
+    # Cluster Adjacency Matrix with best number of clusters 
+    agglomerative = AgglomerativeClustering(n_clusters=best_k).fit(adj_matrix)
+    labels = agglomerative.labels_                                     
+    labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
+
+    # Get classes_sets, convert labels to df
+    classes_sets = [set() for i in range(best_k)]       # list with best_k sets 
+    for node, label in labels.items():
+        classes_sets[label].add(node)                   
+
+    labels = {key.split('###')[0]: value for key, value in labels.items()}
+    labels = pd.DataFrame(list(labels.items()), columns=['identifier', 'cluster']).sort_values('identifier').reset_index(drop=True) # labels as dataframe
+
+    # print(f'Best number of clusters: {best_k} \nSilhouette score with {best_k} clusters: {max_sil_score}')
+    
+
+    return labels, classes_sets
+
+
+"""
+Cluster Graph with Spectral Clustering (determines number of clusters with silhouette score)
+"""
+def cluster_graph_spectral(graph, parameters):
+    adj_matrix = nx.to_numpy_array(graph)        # Graph adjacency matrix as a numpy array
+    sil_scores = []
+    n_clusters = range(2, min(11, len(graph.nodes)))
+    max_sil_score = -1
+    best_k = None
+
+    # Determine best number of clusters with Silhouette Score
+
+    for k in n_clusters:                                            # 2 to 10 clusters 
+        spectral = SpectralClustering(n_clusters=k).fit(adj_matrix)
+        labels = spectral.labels_                                     # list of cluster ids
+        sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
+        sil_scores.append(sil_score)
+        # print(f"Silhouette score for {k} clusters: {sil_score}")
+        if sil_score > max_sil_score:
+            max_sil_score = sil_score
+            best_k = k
+
+    # Cluster Adjacency Matrix with best number of clusters 
+    spectral = SpectralClustering(n_clusters=best_k).fit(adj_matrix)
+    labels = spectral.labels_                                     
+    labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
+
+    # Get classes_sets, convert labels to df
+    classes_sets = [set() for i in range(best_k)]       # list with best_k sets 
+    for node, label in labels.items():
+        classes_sets[label].add(node)                   
+
+    labels = {key.split('###')[0]: value for key, value in labels.items()}
+    labels = pd.DataFrame(list(labels.items()), columns=['identifier', 'cluster']).sort_values('identifier').reset_index(drop=True) # labels as dataframe
+
+    # print(f'Best number of clusters: {best_k} \nSilhouette score with {best_k} clusters: {max_sil_score}')
     
 
     return labels, classes_sets
