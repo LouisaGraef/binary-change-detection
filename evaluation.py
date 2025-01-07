@@ -133,18 +133,6 @@ def read_data(dataset, paper_reproduction):
         # print(gold_cluster.columns.tolist())   # ['identifier', 'cluster']
 
         gold_clusters.append(gold_cluster)
-        
-        """
-        # df ['identifier1', 'identifier2', 'predicted_edge_weight', 'gold_edge_weight'] for one word 
-        word_edge_annotations = pd.concat([edge_preds[i][['identifier1', 'identifier2', 'edge_pred']], gold_wic_df[['judgment']]], axis=1)
-        word_edge_annotations['node_pair'] = list(zip(word_edge_annotations.identifier1, word_edge_annotations.identifier2))
-        # rename columns
-        word_edge_annotations.columns = ['identifier1', 'identifier2', 'predicted_edge_weight', 'gold_edge_weight', 'node_pair']
-        # delete first two columns and reorder columns 
-        word_edge_annotations = word_edge_annotations.iloc[:,[4,2,3]]
-
-        edge_annotations.append(word_edge_annotations)
-        """
 
         edge_preds[i] = wic_judgments
     
@@ -483,8 +471,7 @@ def evaluate_wic(datasets, paper_reproduction):
 
 
 """
-Evaluates the model performance on WIC (edges evaluation with Sprearman Correlation),
-WSI (Correlation Clustering evaluation with ARI and Purity) and Graded Change Detection (Spearman Correlation)
+Evaluates the model performance on WSI (Clustering evaluation with ARI (and Purity)) and Graded Change Detection (Spearman Correlation)
 """
 def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_list):
 
