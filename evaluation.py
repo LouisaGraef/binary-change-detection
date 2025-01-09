@@ -11,16 +11,13 @@ import os
 import csv
 from scipy.stats import spearmanr
 import networkx as nx
-from correlation_clustering import cluster_correlation_search
 from sklearn.metrics import adjusted_rand_score 
 from sklearn import metrics
 import numpy as np
 from collections import defaultdict
 from scipy.spatial.distance import jensenshannon
 import itertools
-from utils import transform_edge_weights
-from sklearn.cluster import KMeans, AgglomerativeClustering, SpectralClustering
-from sklearn.metrics import silhouette_score
+from cluster_graph import cluster_graph
 
 
 
@@ -138,16 +135,21 @@ def read_data(dataset, paper_reproduction):
     
 
 
-    gold_lsc_df = load_gold_lsc(dataset)[['lemma', 'change_graded']]    # read graded change gold scores 
+    gold_gc = load_gold_lsc(dataset)[['lemma', 'change_graded']]    # read graded change gold scores 
+    gold_bc = load_gold_lsc(dataset)[['lemma', 'change_binary']]    # read graded change gold scores 
 
+    
     # normalize lemmas in graded change gold scores df 
     if 'nor_dia_change' not in dataset:     
-        gold_lsc_df['lemma'] = gold_lsc_df['lemma'].str.normalize('NFKD') 
+        gold_gc['lemma'] = gold_gc['lemma'].str.normalize('NFKD') 
+        gold_bc['lemma'] = gold_bc['lemma'].str.normalize('NFKD') 
     if 'dwug_de' in dataset or 'dwug_sv' in dataset:
-        gold_lsc_df['lemma'] = gold_lsc_df['lemma'].str.normalize('NFKC') 
-
-    gold_lsc_df = gold_lsc_df[gold_lsc_df['lemma'].isin(words)].sort_values('lemma')        # sort by lemmas (alphabetically)
-    # print(gold_lsc_df.shape, len(words))          # (50, 2) 50 -> columns 'lemma' and 'change_graded'
+        gold_gc['lemma'] = gold_gc['lemma'].str.normalize('NFKC') 
+        gold_bc['lemma'] = gold_bc['lemma'].str.normalize('NFKC') 
+    
+    gold_gc = gold_gc[gold_gc['lemma'].isin(words)].sort_values('lemma')        # sort by lemmas (alphabetically)
+    gold_bc = gold_bc[gold_bc['lemma'].isin(words)].sort_values('lemma')        # sort by lemmas (alphabetically)
+    # print(gold_gc.shape, len(words))          # (50, 2) 50 -> columns 'lemma' and 'change_graded'
     
 
     # edge_preds: list of dataframes (one df for every word)
@@ -156,10 +158,10 @@ def read_data(dataset, paper_reproduction):
     # gold_clusters: list of dataframes (one df for every word)
     # print(gold_clusters[0].columns.tolist())      # ['identifier', 'cluster']
 
-    # gold_lsc_df: dataframe 
-    # print(gold_lsc_df.columns.tolist())       # ['lemma', 'change_graded']
+    # gold_gc: dataframe 
+    # print(gold_gc.columns.tolist())       # ['lemma', 'change_graded']
     
-    return edge_preds, gold_clusters, gold_lsc_df
+    return edge_preds, gold_clusters, gold_gc, gold_bc
 
 
 
@@ -221,178 +223,6 @@ def generate_graph(word_edge_preds):
     return graph
 
 
-"""
-Cluster graph
-"""
-def cluster_graph(graph, clustering_method, paper_reproduction, parameters):
-    if "correlation" in clustering_method:
-        labels, classes_sets = cluster_graph_cc(graph, paper_reproduction, parameters)
-    elif clustering_method=="k-means":
-        labels, classes_sets = cluster_graph_kmeans(graph,parameters)
-    elif clustering_method=="agglomerative":
-        labels, classes_sets = cluster_graph_agglomerative(graph,parameters)
-    elif clustering_method=="spectral":
-        labels, classes_sets = cluster_graph_spectral(graph,parameters)
-    
-    return labels, classes_sets
-
-
-"""
-Cluster Graph with Correlation Clustering, return cluster_labels (dataframe with columns ['identifier', 'cluster'])
-parameters[0] = edge_shift_value, parameters[1] = max_attempts, parameters[2] = max_iters
-"""
-def cluster_graph_cc(graph, paper_reproduction, parameters):
-    
-    # Cluster Graph 
-    classes = []
-    max_attempts = parameters[1]
-    max_iters = parameters[2]
-    for init in range(1):
-        if paper_reproduction:
-            classes = cluster_correlation_search(graph, s=20, max_attempts=max_attempts, max_iters=max_iters, initial=classes)
-        else:
-            threshold = parameters[0]
-            weight_transformation = lambda x: x-threshold
-            graph = transform_edge_weights(graph, transformation = weight_transformation) # shift edge weights
-            classes = cluster_correlation_search(graph, s=10, max_attempts=parameters[1], max_iters=parameters[2], initial=classes)
-
-    # print(classes)          # Tupel: 1st element list of sets of nodes, 2nd element dict with parameters
-
-    # Store cluster labels (cluster label for each node)
-    labels = list()
-    for k, cl in enumerate(classes[0]):     # enumerate sets of nodes
-        for idx in cl:                   # enumerate nodes of cluster k 
-            labels.append(dict(identifier=idx.split('###')[0], cluster=k))
-    labels = pd.DataFrame(labels).sort_values('identifier').reset_index(drop=True)                  # convert labels from list of dicts to dataframe
-
-    classes_sets = classes[0]           # list of sets of nodes that are in the same cluster
-
-    return labels, classes_sets
-
-
-"""
-Cluster Graph with K-means (determines number of clusters with silhouette score)
-"""
-def cluster_graph_kmeans(graph, parameters):
-    adj_matrix = nx.to_numpy_array(graph)        # Graph adjacency matrix as a numpy array
-    sil_scores = []
-    n_clusters = range(2, min(11, len(graph.nodes)))
-    max_sil_score = -1
-    best_k = None
-
-    # Determine best number of clusters with Silhouette Score
-
-    for k in n_clusters:                                            # 2 to 10 clusters 
-        kmeans = KMeans(n_clusters=k).fit(adj_matrix)
-        labels = kmeans.labels_                                     # list of cluster ids
-        sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
-        sil_scores.append(sil_score)
-        # print(f"Silhouette score for {k} clusters: {sil_score}")
-        if sil_score > max_sil_score:
-            max_sil_score = sil_score
-            best_k = k
-
-    # Cluster Adjacency Matrix with best number of clusters 
-    kmeans = KMeans(n_clusters=best_k).fit(adj_matrix)
-    labels = kmeans.labels_                                     
-    labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
-
-    # Get classes_sets, convert labels to df
-    classes_sets = [set() for i in range(best_k)]       # list with best_k sets 
-    for node, label in labels.items():
-        classes_sets[label].add(node)                   
-
-    labels = {key.split('###')[0]: value for key, value in labels.items()}
-    labels = pd.DataFrame(list(labels.items()), columns=['identifier', 'cluster']).sort_values('identifier').reset_index(drop=True) # labels as dataframe
-
-    # print(f'Best number of clusters: {best_k} \nSilhouette score with {best_k} clusters: {max_sil_score}')
-    
-
-    return labels, classes_sets
-
-
-"""
-Cluster Graph with Agglomerative Clustering (determines number of clusters with silhouette score)
-"""
-def cluster_graph_agglomerative(graph, parameters):
-    adj_matrix = nx.to_numpy_array(graph)        # Graph adjacency matrix as a numpy array
-    sil_scores = []
-    n_clusters = range(2, min(11, len(graph.nodes)))
-    max_sil_score = -1
-    best_k = None
-
-    # Determine best number of clusters with Silhouette Score
-
-    for k in n_clusters:                                            # 2 to 10 clusters 
-        agglomerative = AgglomerativeClustering(n_clusters=k).fit(adj_matrix)
-        labels = agglomerative.labels_                                     # list of cluster ids
-        sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
-        sil_scores.append(sil_score)
-        # print(f"Silhouette score for {k} clusters: {sil_score}")
-        if sil_score > max_sil_score:
-            max_sil_score = sil_score
-            best_k = k
-
-    # Cluster Adjacency Matrix with best number of clusters 
-    agglomerative = AgglomerativeClustering(n_clusters=best_k).fit(adj_matrix)
-    labels = agglomerative.labels_                                     
-    labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
-
-    # Get classes_sets, convert labels to df
-    classes_sets = [set() for i in range(best_k)]       # list with best_k sets 
-    for node, label in labels.items():
-        classes_sets[label].add(node)                   
-
-    labels = {key.split('###')[0]: value for key, value in labels.items()}
-    labels = pd.DataFrame(list(labels.items()), columns=['identifier', 'cluster']).sort_values('identifier').reset_index(drop=True) # labels as dataframe
-
-    # print(f'Best number of clusters: {best_k} \nSilhouette score with {best_k} clusters: {max_sil_score}')
-    
-
-    return labels, classes_sets
-
-
-"""
-Cluster Graph with Spectral Clustering (determines number of clusters with silhouette score)
-"""
-def cluster_graph_spectral(graph, parameters):
-    adj_matrix = nx.to_numpy_array(graph)        # Graph adjacency matrix as a numpy array
-    sil_scores = []
-    n_clusters = range(2, min(11, len(graph.nodes)))
-    max_sil_score = -1
-    best_k = None
-
-    # Determine best number of clusters with Silhouette Score
-
-    for k in n_clusters:                                            # 2 to 10 clusters 
-        spectral = SpectralClustering(n_clusters=k).fit(adj_matrix)
-        labels = spectral.labels_                                     # list of cluster ids
-        sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
-        sil_scores.append(sil_score)
-        # print(f"Silhouette score for {k} clusters: {sil_score}")
-        if sil_score > max_sil_score:
-            max_sil_score = sil_score
-            best_k = k
-
-    # Cluster Adjacency Matrix with best number of clusters 
-    spectral = SpectralClustering(n_clusters=best_k).fit(adj_matrix)
-    labels = spectral.labels_                                     
-    labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
-
-    # Get classes_sets, convert labels to df
-    classes_sets = [set() for i in range(best_k)]       # list with best_k sets 
-    for node, label in labels.items():
-        classes_sets[label].add(node)                   
-
-    labels = {key.split('###')[0]: value for key, value in labels.items()}
-    labels = pd.DataFrame(list(labels.items()), columns=['identifier', 'cluster']).sort_values('identifier').reset_index(drop=True) # labels as dataframe
-
-    # print(f'Best number of clusters: {best_k} \nSilhouette score with {best_k} clusters: {max_sil_score}')
-    
-
-    return labels, classes_sets
-
-
 
 
 """
@@ -425,12 +255,31 @@ def get_cluster_distributions(classes_sets):
 Get Graded Change Scores with Jensenshannon distance, 
 Evaluate predicted Graded Change Scores with Spearman correlation coefficient 
 """
-def GCD(clusters_dists, gold_lsc_df):
+def GCD(clusters_dists, gold_gc, paper_reproduction):
     # cluster_dists: list of cluster probability distributions (for every word prob = [[],[]])
-    glsc_pred = np.array([jensenshannon(d[0], d[1]) for d in clusters_dists])        # graded lsc value for every word 
-    # gold_lsc_df columns: ['lemma', 'change_graded']
-    glsc_true = gold_lsc_df.change_graded.values                                     # gold graded lsc value for every word 
+    if paper_reproduction:
+        glsc_pred = np.array([jensenshannon(d[0], d[1]) for d in clusters_dists])        # graded lsc value for every word 
+    else:
+        glsc_pred = np.array([jensenshannon(d[0], d[1], base=2.0) for d in clusters_dists])        # graded lsc value for every word 
+    # gold_gc columns: ['lemma', 'change_graded']
+    glsc_true = gold_gc.change_graded.values                                     # gold graded lsc value for every word 
     return spearmanr(glsc_pred, glsc_true)
+
+
+
+"""
+Predict binary change score of one word
+"""
+def predict_binary(freq_dist):
+    bc_pred = 0
+    cluster_ids = set(freq_dist[1].keys()).union(set(freq_dist[2].keys()))      # cluster ids (labels)
+    for cluster_id in cluster_ids:
+        freq1 = freq_dist[1].get(cluster_id,0)      # frequency of cluster id in time period 1
+        freq2 = freq_dist[2].get(cluster_id,0)      # frequency of cluster id in time period 2
+        if freq1<=1 and freq2>=3 or freq2<=1 and freq1>=3:
+            bc_pred = 1
+
+    return bc_pred
     
 
 
@@ -444,7 +293,7 @@ def evaluate_wic(datasets, paper_reproduction):
     print("\nWIC evaluation with Spearman Correlation:\n")
     for dataset in datasets:
         # Read data 
-        edge_preds, gold_clusters, gold_lsc_df = read_data(dataset, paper_reproduction)
+        edge_preds, gold_clusters, gold_gc, gold_bc = read_data(dataset, paper_reproduction)
         # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
 
         # Evaluate WIC (edge weight predictions) with Spearman correlation 
@@ -495,10 +344,10 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
 
     # Read data 
-    edge_preds, gold_clusters, gold_lsc_df = read_data(dataset, paper_reproduction=paper_reproduction)
+    edge_preds, gold_clusters, gold_gc, gold_bc = read_data(dataset, paper_reproduction=paper_reproduction)
     # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
     # print(gold_clusters[0].columns.tolist())      # ['identifier', 'cluster']
-    # print(gold_lsc_df.columns.tolist())       # ['lemma', 'change_graded']
+    # print(gold_gc.columns.tolist())       # ['lemma', 'change_graded']
     
 
     # Standardize edge weight predictions -> mean of predicted edge weights is 0, standard deviation is 1 (only relevant for paper reproduciton)
@@ -507,7 +356,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
     
     # Parameter grid for crossvalidation (Clustering: Mapping from node identifiers to Cluster ID (dictionary))
-    parameter_grid = pd.DataFrame(columns=['parameter_combination', 'word', 'ARI', 'GC', 'BC', 'clustering'])
+    parameter_grid = pd.DataFrame(
+        columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold'])
 
     
     # print(edge_preds[0].columns.tolist())  # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2'] for first word
@@ -538,9 +388,16 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
             # Add evaluation results to parameter_grid
             row_ARI = clusters_metrics['adjusted_rand_score'][-1]
-            # glsc_pred = jensenshannon(prob_dist[0], prob_dist[1])
-            clustering = cluster_labels.set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
-            new_grid_row = {'parameter_combination': comb, 'word': word, 'ARI': row_ARI, 'GC': "-", 'BC': "-", 'clustering': clustering}
+            gc_pred = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
+            bc_pred = predict_binary(freq_dist)
+
+            gc_true = gold_gc[gold_gc['lemma'] == word].iloc[0]['change_graded']
+            bc_true = gold_bc[gold_bc['lemma'] == word].iloc[0]['change_binary']
+            clustering_pred = cluster_labels.set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
+            # columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold']
+            gold_clusters_word = gold_clusters[i].set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
+            new_grid_row = {'parameter_combination': comb, 'word': word, 'GC_pred': gc_pred, 'GC_gold': gc_true, 
+                            'BC_pred': bc_pred, 'BC_gold': bc_true, 'clustering_pred': clustering_pred, 'clustering_gold': gold_clusters_word}
             parameter_grid.loc[len(parameter_grid)] = new_grid_row
         print(comb)
 
@@ -552,7 +409,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
         # clusters_metrics: {'adjusted_rand_score': [...], 'purity': [...]}
         clusters_metrics = {m: np.mean(v) for m, v in clusters_metrics.items()}         # WSI: ARI, Purity
 
-        gcd_spearman = GCD(cluster_dists, gold_lsc_df)                                 # GCD: Spearman correlation
+        gcd_spearman = GCD(cluster_dists, gold_gc, paper_reproduction=True)                                 # GCD: Spearman correlation
 
         # header = 'dataset\tWSI_ARI\tWSI_Purity\tGCD_Spearman_Correlation'             # Add paper evaluation results to paper_eval_lines
         record = "\t".join([str(i) for i in [ds, clusters_metrics['adjusted_rand_score'].round(3), 
@@ -560,18 +417,6 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
         paper_eval_lines.append(record)
         print(record)
 
-        """
-        # Save clusters and cluster probability distributions 
-        ds = os.path.basename(dataset)
-        Path(f'./prob_dists/{ds}').mkdir(exist_ok=True, parents=True)
-        Path(f'./classes/{ds}').mkdir(exist_ok=True, parents=True)
-
-        with open(f'./prob_dists/{ds}/prob_dists.dill', mode='+wb') as f:
-            dill.dump(clusters_dists, f)
-            
-        with open(f'./classes/{ds}/classes.dill', mode='+wb') as f:
-            dill.dump(clusters_labels, f)
-        """
 
         # Save WSI and GCD evaluation results to output_file="./stats/paper_model_evaluation.tsv"
         with open(output_file, mode='w', encoding='utf-8') as f:
@@ -584,25 +429,18 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
     parameter_grid.to_csv(df_output_file, sep='\t', index=False)
 
 
+
+
 if __name__=="__main__":
     
     # Evalation with WIC;WSI;GCD 
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       # no dwug_la 
-    datasets = ["./paper_data/" + dataset for dataset in datasets]
+    datasets = ["./data/" + dataset for dataset in datasets]
     
-    # WIC evaluation for all datasets 
-    evaluate_wic(datasets)
-    
+
     # WSI and LSC evaluation 
 
-    output_file="./stats/paper_model_evaluation.tsv"
-    # Delete content of output_file="./stats/paper_model_evaluation.tsv"
-    with open(output_file, mode='w', encoding='utf-8') as f:
-        pass
-
-    # parameter=[s=20, max_attempts=2000, max_iters=50000]  # s=max_clusters
-    parameter_list = [[20],[2000],[50000]]
-
+    parameter_list = [[1],[2],[3]]
     for dataset in datasets:
-        evaluate_model(dataset, paper_reproduction=True, clustering_method="correlation_paper", parameter_list=parameter_list)
+        evaluate_model(dataset, paper_reproduction=False, clustering_method="k-means", parameter_list=parameter_list)
