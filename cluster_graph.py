@@ -36,11 +36,9 @@ def cluster_graph_cc(graph, paper_reproduction, parameters):
     
     # Cluster Graph 
     classes = []
-    max_attempts = parameters[1]
-    max_iters = parameters[2]
     for init in range(1):
         if paper_reproduction:
-            classes = cluster_correlation_search(graph, s=20, max_attempts=max_attempts, max_iters=max_iters, initial=classes)
+            classes = cluster_correlation_search(graph, s=20, max_attempts=parameters[1], max_iters=parameters[2], initial=classes)
         else:
             threshold = parameters[0]
             weight_transformation = lambda x: x-threshold
@@ -74,7 +72,7 @@ def cluster_graph_kmeans(graph, parameters):
     # Determine best number of clusters with Silhouette Score
 
     for k in n_clusters:                                            # 2 to 10 clusters 
-        kmeans = KMeans(n_clusters=k).fit(adj_matrix)
+        kmeans = KMeans(n_clusters=k, n_init=parameters[0], max_iter=parameters[1]).fit(adj_matrix)
         labels = kmeans.labels_                                     # list of cluster ids
         sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
         sil_scores.append(sil_score)
@@ -84,7 +82,7 @@ def cluster_graph_kmeans(graph, parameters):
             best_k = k
 
     # Cluster Adjacency Matrix with best number of clusters 
-    kmeans = KMeans(n_clusters=best_k).fit(adj_matrix)
+    kmeans = KMeans(n_clusters=best_k, n_init=parameters[0], max_iter=parameters[1]).fit(adj_matrix)
     labels = kmeans.labels_                                     
     labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
 
@@ -115,7 +113,7 @@ def cluster_graph_agglomerative(graph, parameters):
     # Determine best number of clusters with Silhouette Score
 
     for k in n_clusters:                                            # 2 to 10 clusters 
-        agglomerative = AgglomerativeClustering(n_clusters=k).fit(adj_matrix)
+        agglomerative = AgglomerativeClustering(n_clusters=k, linkage=parameters[0], metric=parameters[1]).fit(adj_matrix)
         labels = agglomerative.labels_                                     # list of cluster ids
         sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
         sil_scores.append(sil_score)
@@ -125,7 +123,7 @@ def cluster_graph_agglomerative(graph, parameters):
             best_k = k
 
     # Cluster Adjacency Matrix with best number of clusters 
-    agglomerative = AgglomerativeClustering(n_clusters=best_k).fit(adj_matrix)
+    agglomerative = AgglomerativeClustering(n_clusters=best_k, linkage=parameters[0], metric=parameters[1]).fit(adj_matrix)
     labels = agglomerative.labels_                                     
     labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
 
@@ -156,7 +154,7 @@ def cluster_graph_spectral(graph, parameters):
     # Determine best number of clusters with Silhouette Score
 
     for k in n_clusters:                                            # 2 to 10 clusters 
-        spectral = SpectralClustering(n_clusters=k).fit(adj_matrix)
+        spectral = SpectralClustering(n_clusters=k, affinity=parameters[0], n_neighbors=parameters[1]).fit(adj_matrix)
         labels = spectral.labels_                                     # list of cluster ids
         sil_score = silhouette_score(adj_matrix, labels)            # Silhouette Score
         sil_scores.append(sil_score)
@@ -166,7 +164,7 @@ def cluster_graph_spectral(graph, parameters):
             best_k = k
 
     # Cluster Adjacency Matrix with best number of clusters 
-    spectral = SpectralClustering(n_clusters=best_k).fit(adj_matrix)
+    spectral = SpectralClustering(n_clusters=best_k, affinity=parameters[0], n_neighbors=parameters[1]).fit(adj_matrix)
     labels = spectral.labels_                                     
     labels = {node: label for node, label in zip(graph.nodes(), labels)}        # mapping node id to cluster id
 
