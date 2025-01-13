@@ -25,20 +25,20 @@ def get_dataset_stats(dataset):
     dstats['dataset'] = dataset
 
     # stats from stats_groupings.csv 
-    if dataset=="dwug_de_sense":
-        stats_groupings = "./data/dwug_de_sense/stats/maj_2/stats_groupings.csv"
+    if "dwug_de_sense" in dataset:
+        stats_groupings = f"{dataset}/stats/maj_2/stats_groupings.csv"
         df = pd.read_csv(stats_groupings, sep='\t')     # stats_groupings dataframe 
-    elif dataset=="dwug_de_sense_maj3":
+    elif "dwug_de_sense_maj3" in dataset:
         stats_groupings = "./data/dwug_de_sense/stats/maj_3/stats_groupings.csv"
         df = pd.read_csv(stats_groupings, sep='\t')     # stats_groupings dataframe 
-    elif dataset=="nor_dia_change-main":
-        sg_subset1 = "./data/nor_dia_change-main/subset1/stats/stats_groupings.tsv"
-        sg_subset2 = "./data/nor_dia_change-main/subset2/stats/stats_groupings.tsv"
+    elif "nor_dia_change-main" in dataset:
+        sg_subset1 = f"{dataset}/subset1/stats/stats_groupings.tsv"
+        sg_subset2 = f"{dataset}/subset2/stats/stats_groupings.tsv"
         df_subset1 = pd.read_csv(sg_subset1, sep='\t')  # stats_groupings dataframe of subset 1  
         df_subset2 = pd.read_csv(sg_subset2, sep='\t')  # stats_groupings dataframe of subset 2  
         df = pd.concat([df_subset1, df_subset2], axis=0)    # concatenate both subsets to gets stats of the whole dataset 
     else: 
-        stats_groupings = f"./data/{dataset}/stats/opt/stats_groupings.csv"
+        stats_groupings = f"{dataset}/stats/opt/stats_groupings.csv"
         df = pd.read_csv(stats_groupings, sep='\t')     # stats_groupings dataframe 
 
     nodes = list(df.iloc[:,2])     # number of nodes per graph (word) 
@@ -62,17 +62,17 @@ def get_dataset_stats(dataset):
     
 
     # stats from stats.csv (no values for dwug_de_sense, because no judgements of semantic similarity between uses)
-    if dataset=="dwug_de_sense" or dataset=="dwug_de_sense_maj3":
+    if "dwug_de_sense" in dataset or "dwug_de_sense_maj3" in dataset:
         pass
     else:
-        if dataset=="nor_dia_change-main":
-            stats_subset1 = "./data/nor_dia_change-main/subset1/stats/stats.tsv"
-            stats_subset2 = "./data/nor_dia_change-main/subset2/stats/stats.tsv"
+        if "nor_dia_change-main" in dataset:
+            stats_subset1 = f"{dataset}/subset1/stats/stats.tsv"
+            stats_subset2 = f"{dataset}/subset2/stats/stats.tsv"
             df2_subset1 = pd.read_csv(stats_subset1, sep='\t')  # stats_groupings dataframe of subset 1  
             df2_subset2 = pd.read_csv(stats_subset2, sep='\t')  # stats_groupings dataframe of subset 2  
             df2 = pd.concat([df2_subset1, df2_subset2], axis=0)    # concatenate both subsets to gets stats of the whole dataset 
         else: 
-            stats = f"./data/{dataset}/stats/opt/stats.csv"
+            stats = f"{dataset}/stats/opt/stats.csv"
             df2 = pd.read_csv(stats, sep='\t')     # stats dataframe 
 
         norm_loss = list(df2['loss_normalized'])     # normalized loss per graph (word) 
@@ -99,23 +99,28 @@ if __name__=="__main__":
     # List of datasets: DWUG DE, DiscoWUG, RefWUG, DWUG EN, DWUG SV, DWUG LA, DWUG ES, ChiWUG, NorDiaChange, DWUG DE Sense 
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug", 
                 "nor_dia_change-main", "dwug_de_sense", "dwug_de_sense_maj3"]
+    datasets = ["./data/" + dataset for dataset in datasets]
     datasets_paper_versions = ["dwug_de", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug", 
                 "nor_dia_change-main"]
+    datasets_paper_versions = ["./paper_data/" + dataset for dataset in datasets_paper_versions]
     
+
     is_header = True        # create header first when exporting stats
     os.makedirs('./stats', exist_ok=True)     # create directory for stats (no exception is raised if directory aready exists)
     with open('./stats/dataset_stats.csv', 'w', encoding='utf-8') as f_out:     # 'w' mode deletes contents of file 
         pass
 
-    for dataset in datasets:
-        dataset_stats, frequ_dist1, frequ_dist2, binary = get_dataset_stats(dataset)                 # get stats of one dataset 
 
+    for dataset in datasets_paper_versions:
+        dataset_stats, frequ_dist1, frequ_dist2, binary = get_dataset_stats(dataset)                 # get stats of one dataset 
+        
         # export stats 
         with open('./stats/dataset_stats.csv', 'a', encoding='utf-8') as f_out:
             if is_header:
                 f_out.write('\t'.join([key for key in dataset_stats]) + '\n')
                 is_header = False 
             f_out.write('\t'.join([str(dataset_stats[key]) for key in dataset_stats]) + '\n')
+        
     #print(binary)
     print("")
 

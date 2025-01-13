@@ -15,25 +15,25 @@ Paper Code: https://github.com/FrancescoPeriti/CSSDetection/blob/main/run_compar
 
 
 if __name__=="__main__":
+    """
     # Download datasets used in paper  
-                                                     # TODO: add dwug_la to datasets 
     download_paper_datasets()        
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       
     datasets = ["./paper_data/" + dataset for dataset in datasets]
     
 
-    # Computational Annotation 
+    # Computational Annotation (predict edge weights)
     for dataset in datasets:
         get_computational_annotation(dataset, paper_reproduction=True)
     
-
+    """
     # Evalation with WIC;WSI;GCD 
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
-                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       # no dwug_la 
+                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]      
     datasets = ["./paper_data/" + dataset for dataset in datasets]
     
-
+    
     # WIC evaluation for all datasets 
     evaluate_wic(datasets, paper_reproduction=True)
     

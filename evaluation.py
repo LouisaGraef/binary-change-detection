@@ -60,9 +60,9 @@ Read stats_groupings (graded and binary change gold scores, ...)
 """
 def load_gold_lsc(dataset):
     if 'nor_dia_change-main' in dataset:
-        stats_groupings = pd.read_csv(f'{dataset}/stats/stats_groupings.tsv', sep='\t')
+        stats_groupings = pd.read_csv(f'{dataset}/stats/stats_groupings.tsv', sep='\t', encoding='utf-8')
     else:
-        stats_groupings = pd.read_csv(f'{dataset}/stats/opt/stats_groupings.csv', sep='\t')
+        stats_groupings = pd.read_csv(f'{dataset}/stats/opt/stats_groupings.csv', sep='\t', encoding='utf-8')
     
     return stats_groupings
 
@@ -78,25 +78,33 @@ def read_data(dataset, paper_reproduction):
     if paper_reproduction:
         ds = dataset.replace("./paper_data/", "")
         edge_preds = dill.load(open(f'./paper_edge_preds/{ds}/paper_edge_preds.dill', mode='rb'))   # dict: for every word dataframe (identifier1, identifier2, judgment, edge_pred)
+        edge_preds_full = None
     else:
         ds = dataset.replace("./data/", "")
         edge_preds = dill.load(open(f'./edge_preds/{ds}/edge_preds.dill', mode='rb'))   # dict: for every word dataframe (identifier1, identifier2, judgment, edge_pred)
+        edge_preds_full = dill.load(open(f'./edge_preds/{ds}/edge_preds_full.dill', mode='rb'))   # dict: for every word dataframe (identifier1, identifier2, edge_pred)
+        words = [word for word in words if word in edge_preds_full]
+        edge_preds_full = [edge_preds_full[word] for word in words]        # list of dataframes (['identifier1', 'identifier2', 'edge_pred'] for every word)
+        
     words = [word for word in words if word in edge_preds]
     edge_preds = [edge_preds[word] for word in words]        # list of dataframes (['identifier1', 'identifier2', 'judgment', 'edge_pred'] for every word)
     
     
     # pre-processing
-    for df in edge_preds:
-        df['identifier1'] = df['identifier1'].apply(lambda x: x.replace('Name: identifier1', ''))
-        df['identifier2'] = df['identifier2'].apply(lambda x: x.replace('Name: identifier2', ''))   
+    if not dataset=="./data/dwug_la":       # no gold edge weights for dwug_la 
+        for df in edge_preds:
+            df['identifier1'] = df['identifier1'].apply(lambda x: x.replace('Name: identifier1', ''))
+            df['identifier2'] = df['identifier2'].apply(lambda x: x.replace('Name: identifier2', ''))  
+    if not paper_reproduction:
+        for df in edge_preds_full:
+            df['identifier1'] = df['identifier1'].apply(lambda x: x.replace('Name: identifier1', ''))
+            df['identifier2'] = df['identifier2'].apply(lambda x: x.replace('Name: identifier2', ''))  
     
     gold_clusters = list()  # list of dfs ['identifier', 'cluster']
 
     for i, word in enumerate(words):
 
-        # edge weight gold judgments and predictions for one word
-        wic_judgments = edge_preds[i]      
-        # print(wic_judgments.columns.tolist())         # ['identifier1', 'identifier2', 'judgment', 'edge_pred']
+        # print(edge_preds[i].columns.tolist())         # ['identifier1', 'identifier2', 'judgment', 'edge_pred']
         
 
         # read gold clusters dataframe 
@@ -109,51 +117,47 @@ def read_data(dataset, paper_reproduction):
         valid_idx = gold_cluster[gold_cluster.cluster!=-1].identifier.values  # nodes that are not in gold cluster -1 
         # filter -1 nodes out of gold clusters and -1 edges out of gold edge weights and predicted edge weights 
         gold_cluster = gold_cluster[gold_cluster.identifier.isin(valid_idx)]  
-        wic_judgments = wic_judgments[wic_judgments.identifier1.isin(valid_idx) & wic_judgments.identifier2.isin(valid_idx)].sort_values(['identifier1', 'identifier2']).reset_index()
+        if not dataset=="./data/dwug_la":
+            edge_preds[i] = edge_preds[i][edge_preds[i].identifier1.isin(valid_idx) & edge_preds[i].identifier2.isin(valid_idx)].sort_values(['identifier1', 'identifier2']).reset_index()
         
 
-        # ignore usage pairs for which it wasn't possible to make a prediction
-        usages = set(wic_judgments.loc[wic_judgments['edge_pred'].notna(), 'identifier1'].tolist()
-                     + wic_judgments.loc[wic_judgments['edge_pred'].notna(), 'identifier2'].tolist())           # all nodes that have edge predictions 
-        wic_judgments = wic_judgments[wic_judgments.identifier1.isin(usages) & wic_judgments.identifier2.isin(usages)]  # only edges where both nodes have edge predictions
-        gold_cluster = gold_cluster[gold_cluster.identifier.isin(usages)]   # only nodes that have edge predictions 
+            # ignore usage pairs for which it wasn't possible to make a prediction
+            usages = set(edge_preds[i].loc[edge_preds[i]['edge_pred'].notna(), 'identifier1'].tolist()
+                        + edge_preds[i].loc[edge_preds[i]['edge_pred'].notna(), 'identifier2'].tolist())           # all nodes that have edge predictions 
+            edge_preds[i] = edge_preds[i][edge_preds[i].identifier1.isin(usages) & edge_preds[i].identifier2.isin(usages)]  # only edges where both nodes have edge predictions
+            gold_cluster = gold_cluster[gold_cluster.identifier.isin(usages)]   # only nodes that have edge predictions 
 
 
         # add grouping info
         uses = load_word_usages(dataset, word)
         uses = uses[['identifier', 'grouping']]
         uses = {row['identifier']: row['grouping'] for _, row in uses.iterrows()}   # mapping from identifiers to grouping 
-        wic_judgments['grouping1'] = [uses[row['identifier1']] for _, row in wic_judgments.iterrows()]  # grouping of identifier 1 
-        wic_judgments['grouping2'] = [uses[row['identifier2']] for _, row in wic_judgments.iterrows()]  # grouping of identifier 2 
+        if not dataset=="./data/dwug_la":
+            edge_preds[i]['grouping1'] = [uses[row['identifier1']] for _, row in edge_preds[i].iterrows()]  # grouping of identifier 1 
+            edge_preds[i]['grouping2'] = [uses[row['identifier2']] for _, row in edge_preds[i].iterrows()]  # grouping of identifier 2 
+        if not paper_reproduction:  
+            edge_preds_full[i]['grouping1'] = [uses[row['identifier1']] for _, row in edge_preds_full[i].iterrows()]  # grouping of identifier 1 
+            edge_preds_full[i]['grouping2'] = [uses[row['identifier2']] for _, row in edge_preds_full[i].iterrows()]  # grouping of identifier 2 
 
-        # print(wic_judgments.columns.tolist())    # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
+        # print(edge_preds[i].columns.tolist())    # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
         # print(gold_cluster.columns.tolist())   # ['identifier', 'cluster']
 
         gold_clusters.append(gold_cluster)
-
-        edge_preds[i] = wic_judgments
     
 
 
-    gold_gc = load_gold_lsc(dataset)[['lemma', 'change_graded']]    # read graded change gold scores 
-    gold_bc = load_gold_lsc(dataset)[['lemma', 'change_binary']]    # read graded change gold scores 
+    gold_gc = load_gold_lsc(dataset)[['lemma', 'change_graded']].sort_values('lemma')    # read graded change gold scores 
+    gold_bc = load_gold_lsc(dataset)[['lemma', 'change_binary']].sort_values('lemma')    # read graded change gold scores 
 
     
-    # normalize lemmas in graded change gold scores df 
-    if 'nor_dia_change' not in dataset:     
-        gold_gc['lemma'] = gold_gc['lemma'].str.normalize('NFKD') 
-        gold_bc['lemma'] = gold_bc['lemma'].str.normalize('NFKD') 
-    if 'dwug_de' in dataset or 'dwug_sv' in dataset:
-        gold_gc['lemma'] = gold_gc['lemma'].str.normalize('NFKC') 
-        gold_bc['lemma'] = gold_bc['lemma'].str.normalize('NFKC') 
-    
-    gold_gc = gold_gc[gold_gc['lemma'].isin(words)].sort_values('lemma')        # sort by lemmas (alphabetically)
-    gold_bc = gold_bc[gold_bc['lemma'].isin(words)].sort_values('lemma')        # sort by lemmas (alphabetically)
     # print(gold_gc.shape, len(words))          # (50, 2) 50 -> columns 'lemma' and 'change_graded'
     
 
     # edge_preds: list of dataframes (one df for every word)
     # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
+
+    # edge_preds_full: list of dataframes (one df for every word)
+    # print(edge_preds_full[0].columns.tolist())     # ['identifier1', 'identifier2', 'edge_pred', 'grouping1', 'grouping2']
 
     # gold_clusters: list of dataframes (one df for every word)
     # print(gold_clusters[0].columns.tolist())      # ['identifier', 'cluster']
@@ -161,7 +165,7 @@ def read_data(dataset, paper_reproduction):
     # gold_gc: dataframe 
     # print(gold_gc.columns.tolist())       # ['lemma', 'change_graded']
     
-    return edge_preds, gold_clusters, gold_gc, gold_bc
+    return edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc
 
 
 
@@ -293,7 +297,7 @@ def evaluate_wic(datasets, paper_reproduction):
     print("\nWIC evaluation with Spearman Correlation:\n")
     for dataset in datasets:
         # Read data 
-        edge_preds, gold_clusters, gold_gc, gold_bc = read_data(dataset, paper_reproduction)
+        edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc = read_data(dataset, paper_reproduction)
         # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
 
         # Evaluate WIC (edge weight predictions) with Spearman correlation 
@@ -344,7 +348,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
 
     # Read data 
-    edge_preds, gold_clusters, gold_gc, gold_bc = read_data(dataset, paper_reproduction=paper_reproduction)
+    edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc = read_data(dataset, paper_reproduction=paper_reproduction)
     # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
     # print(gold_clusters[0].columns.tolist())      # ['identifier', 'cluster']
     # print(gold_gc.columns.tolist())       # ['lemma', 'change_graded']
@@ -371,7 +375,11 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
     for comb in combinations:
         for i, word in enumerate(words):                    # iterate over words
-            word_edge_preds = edge_preds[i]
+            if paper_reproduction:
+                word_edge_preds = edge_preds[i]
+            else:
+                word_edge_preds = edge_preds_full[i]    # use edge predictions of all edges
+
             graph = generate_graph(word_edge_preds)         # generate graph with predicted edge weights for word i
             # cluster graph (cluster_labels: dataframe with columns ['identifier', 'cluster'])
             cluster_labels, classes_sets = cluster_graph(graph, clustering_method, paper_reproduction, comb)    
@@ -391,8 +399,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             gc_pred = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
             bc_pred = predict_binary(freq_dist)
 
-            gc_true = gold_gc[gold_gc['lemma'] == word].iloc[0]['change_graded']
-            bc_true = gold_bc[gold_bc['lemma'] == word].iloc[0]['change_binary']
+            gc_true = gold_gc.iloc[0]['change_graded']
+            bc_true = gold_bc.iloc[0]['change_binary']
             clustering_pred = cluster_labels.set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
             # columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold']
             gold_clusters_word = gold_clusters[i].set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids

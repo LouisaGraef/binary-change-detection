@@ -12,6 +12,7 @@ from scipy.stats import spearmanr
 from model_evaluate import read_data
 import pickle
 import networkx as nx
+from itertools import combinations
 
 
 
@@ -124,6 +125,125 @@ def get_human_judgment(dataset,word,words):
 
 
 
+
+"""
+For paper reproduction: Predict edge weights for all human annotated edges
+return: judgments (dataframe with columns: identifier1, identifier2, judgment, edge_pred)
+"""
+def predict_annotated_edges(model, judgments, df1, df2):
+    E1, E2 = list(), list()     # embeddings of identifier1 nodes, embeddings of identifier2 nodes
+
+    # add new column for edge predictions to judgments 
+    judgments['edge_pred'] = pd.NA
+
+    for j, row in df1.iterrows():
+        row1, row2 = pd.DataFrame([dict(row)]), pd.DataFrame([dict(df2.loc[j])])    # nodes 1 and 2 of one human annotated edge
+
+        # input data for xl-lexeme model 
+        context1, context2 = row1.loc[0, 'context'], row2.loc[0, 'context'] 
+        indexes1, indexes2 = row1.loc[0, 'indexes_target_token'], row2.loc[0, 'indexes_target_token']
+        indexes1, indexes2 = list(map(int, indexes1.split(':'))), list(map(int, indexes2.split(':')))
+
+        examples_1= InputExample(texts=context1, positions=indexes1)
+        examples_2= InputExample(texts=context2, positions=indexes2)
+
+
+        # generate embeddings
+        try:
+            e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
+        except:
+            # no edge weight prediction if one sentence is too long 
+            continue                                    
+        else:
+            E1.append(e_1)      # embeddings of identifier1 nodes 
+            E2.append(e_2)
+            # add edge weight prediction for word and identifier 1 and 2 to dictionary 'edge_preds' 
+            edge_pred=1-cosine(E1[-1], E2[-1])
+            judgments.at[j, 'edge_pred'] = edge_pred
+            #edge_preds[word].append(dict(identifier1=row1['identifier'].iloc[0], identifier2=row2['identifier'].iloc[0], judgment=1-cosine(E1[-1], E2[-1])))
+            
+
+    return judgments
+
+
+
+"""
+Predict edge weights for all edges (all node pairs)
+"""
+def predict_all_edges(model, dataset, word, words, judgments):
+    E1, E2 = list(), list()     # embeddings of identifier1 nodes, embeddings of identifier2 nodes
+
+    if dataset=="./data/dwug_la":       # no human edge judgments for dwug_la
+        pass
+    else:
+        # add new column for edge predictions to judgments 
+        judgments['edge_pred'] = pd.NA
+                                                            
+    # read in uses 
+    uses = pd.read_csv(f'{dataset}/data/{word}/uses.csv', sep='\t', quoting=csv.QUOTE_NONE, encoding="utf-8")
+    uses = processing(dataset, uses, words)     # change grouping in nor-dia-change to 1 and 2
+    uses = uses[['identifier', 'context', 'indexes_target_token', 'grouping']]
+    uses['identifier'] = uses['identifier'].astype(str)
+
+
+    # Initialize graph
+    graph = nx.Graph()
+        
+    # Add uses as nodes
+    identifier2data = {}
+    for index, row in uses.iterrows():     
+        identifier = row['identifier']
+        identifier2data[identifier] = row.to_dict()
+        graph.add_node(identifier)
+
+    nx.set_node_attributes(graph, identifier2data)
+
+    # Predict edge weights of all edges
+    nodes = list(graph.nodes)
+    edges = list(combinations(nodes, 2))        # all edges (edge (u,v) = (v,u) -> undirected), list of tuples of identifiers
+    word_preds_full = pd.DataFrame(columns=['identifier1', 'identifier2', 'edge_pred'])
+
+
+    for edge in edges:
+        node1_data = graph.nodes[edge[0]]
+        node2_data = graph.nodes[edge[1]]
+
+        # input data for xl-lexeme model 
+        context1, context2 = node1_data['context'], node2_data['context']
+        indexes1, indexes2 = node1_data['indexes_target_token'], node2_data['indexes_target_token']
+        indexes1, indexes2 = list(map(int, indexes1.split(':'))), list(map(int, indexes2.split(':')))
+
+        examples_1= InputExample(texts=context1, positions=indexes1)
+        examples_2= InputExample(texts=context2, positions=indexes2)
+
+        # generate embeddings
+        try:
+            e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
+        except:
+            # no edge weight prediction if one sentence is too long 
+            continue                                    
+        else:
+            E1.append(e_1)      # embeddings of identifier1 nodes 
+            E2.append(e_2)
+
+            # add edge weight prediction for word and identifier 1 and 2 to dataframe 'word_preds_full' 
+            edge_pred=1-cosine(E1[-1], E2[-1])
+            new_row = {'identifier1': edge[0], 'identifier2': edge[1], 'edge_pred': edge_pred}
+            word_preds_full.loc[len(word_preds_full)] = new_row
+
+            if dataset=="./data/dwug_la":       # no human edge judgments for dwug_la
+                pass
+            else:
+                # add edge weight prediction for word to dataframe 'judgments' if 'judgments' contains node pair identifier1 and identifier2
+                valid_index = ((judgments['identifier1'] == edge[0]) & (judgments['identifier2'] == edge[1])) | ((judgments['identifier2'] == edge[0]) & (judgments['identifier1'] == edge[1]))
+                if valid_index.any():       # if node pair has human judgment
+                    judgments.loc[valid_index, 'edge_pred'] = edge_pred
+        
+    return judgments, word_preds_full
+
+
+
+
 """
 Extract embeddings for word usages and predicted edge weights 
 """
@@ -138,7 +258,8 @@ def get_computational_annotation(dataset, paper_reproduction):
     E = dict()
 
     # dfs = list()                            # for every word dataframe of mean human judgements 
-    edge_preds = dict()              # dictionary: for every word df of edge weight judgments and predictions 
+    edge_preds = dict()              # dictionary: for every word df of edge weight judgments and predictions (only edges with human judgment)
+    edge_preds_full = dict()         # dictionary: for evary word df of edge weight predictions (all edges)
 
     for word in words:
 
@@ -149,50 +270,30 @@ def get_computational_annotation(dataset, paper_reproduction):
             # (df2.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
             # dfs.append(judgments)
         else:
-            judgments, df1, df2 = get_human_judgment(dataset,word,words)
-        
-        E1, E2 = list(), list()     # embeddings of identifier1 nodes, embeddings of identifier2 nodes
-
-        # add new column for edge predictions to judgments 
-        judgments['edge_pred'] = pd.NA
-
-        for j, row in df1.iterrows():
-            row1, row2 = pd.DataFrame([dict(row)]), pd.DataFrame([dict(df2.loc[j])])    # nodes 1 and 2 of one human annotated edge
-
-            # input data for xl-lexeme model 
-            context1, context2 = row1.loc[0, 'context'], row2.loc[0, 'context'] 
-            indexes1, indexes2 = row1.loc[0, 'indexes_target_token'], row2.loc[0, 'indexes_target_token']
-            indexes1, indexes2 = list(map(int, indexes1.split(':'))), list(map(int, indexes2.split(':')))
-
-            examples_1= InputExample(texts=context1, positions=indexes1)
-            examples_2= InputExample(texts=context2, positions=indexes2)
-
-
-            # generate embeddings
-            try:
-                e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
-            except:
-                # no edge weight prediction if one sentence is too long 
-                continue                                    
+            if dataset=="./data/dwug_la":       # no human edge judgments for dwug_la
+                judgments = None
             else:
-                E1.append(e_1)      # embeddings of identifier1 nodes 
-                E2.append(e_2)
-                # add edge weight prediction for word and identifier 1 and 2 to dictionary 'edge_preds' 
-                judgment=1-cosine(E1[-1], E2[-1])
-                judgments.at[j, 'edge_pred'] = judgment
-                #edge_preds[word].append(dict(identifier1=row1['identifier'].iloc[0], identifier2=row2['identifier'].iloc[0], judgment=1-cosine(E1[-1], E2[-1])))
-                
-        try:
-            E[word] = (np.array(E1), np.array(E2))          # all identifer 1 embeddings, all identifier 2 embeddings
-        except:
-            continue
+                judgments, df1, df2 = get_human_judgment(dataset,word,words)
 
-        edge_preds[word]= judgments
-        # print(judgments.columns.tolist())         # ['identifier1', 'identifier2', 'judgment', 'edge_pred']
 
-        print('.')
+        if paper_reproduction:                                              # predict edge weights of all human annotated edges 
+            word_preds = predict_annotated_edges(model, judgments, df1, df2)
+            edge_preds[word]= word_preds
+            # print(judgments.columns.tolist())         # ['identifier1', 'identifier2', 'judgment', 'edge_pred']
+            print('.')
 
-    # save edge_preds 
+        else:                                               # no paper reproduction: predict edge weights of all edges 
+            word_preds, word_preds_full = predict_all_edges(model, dataset, word, words, judgments)
+            
+            edge_preds_full[word] = word_preds_full
+            edge_preds[word]= word_preds
+            # print(word_preds.columns.tolist())         # ['identifier1', 'identifier2', 'judgment', 'edge_pred']
+            # print(word_preds_full.columns.tolist())         # ['identifier1', 'identifier2', 'edge_pred']
+            print('.')
+
+
+
+    # save edge weights  
     if paper_reproduction:
         ds = dataset.replace("./paper_data/", "")
         Path(f'./paper_edge_preds/{ds}').mkdir(exist_ok=True, parents=True)
@@ -203,6 +304,8 @@ def get_computational_annotation(dataset, paper_reproduction):
         Path(f'./edge_preds/{ds}').mkdir(exist_ok=True, parents=True)
         with open(f'./edge_preds/{ds}/edge_preds.dill', mode='+wb') as f:
             dill.dump(edge_preds, f)  
+        with open(f'./edge_preds/{ds}/edge_preds_full.dill', mode='+wb') as f:
+            dill.dump(edge_preds_full, f)  
 
     print('-----')
 
