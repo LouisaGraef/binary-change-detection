@@ -79,15 +79,15 @@ if __name__=="__main__":
     
     # Agglomerative Clustering
     # parameters: linkage = ['ward', 'average', 'complete', 'single']   (which linkage criterion to use)
-    # metric = ['euclidean', 'cosine', 'precomputed']  (metric used to compute the linkage)
-    parameter_list = [['ward', 'average', 'complete', 'single'],['euclidean', 'cosine', 'precomputed']]
+    # metric = ['euclidean', 'cosine']  (metric used to compute the linkage)
+    parameter_list = [['ward', 'average', 'complete', 'single'],['euclidean', 'cosine']]
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="agglomerative", parameter_list=parameter_list)   # create parameter grid
     
     # Spectral Clustering
-    # affinity: ['nearest_neighbors', 'rbf', 'precomputed'] (how to construct the affinity matrix)
+    # affinity: ['nearest_neighbors', 'rbf'] (how to construct the affinity matrix)
     # n_neighbors: [5, 10, 15] (number of neighbors if nearest_neighbors is used)
-    parameter_list = [['nearest_neighbors', 'rbf', 'precomputed'],[5, 10, 15]]
+    parameter_list = [['nearest_neighbors', 'rbf'],[5, 10, 15]]
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="spectral", parameter_list=parameter_list)   # create parameter grid
     

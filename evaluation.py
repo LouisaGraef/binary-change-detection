@@ -383,6 +383,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
     combinations = list(itertools.product(*parameter_list))     # all parameter combinations
 
     for comb in combinations:
+        if comb[0] == 'ward' and not comb[1] == 'euclidean':    # Agglomerative clustering: Ward can only work with euclidean distances.
+            continue
         for i, word in enumerate(words):                    # iterate over words
             if paper_reproduction:
                 word_edge_preds = edge_preds[i]
