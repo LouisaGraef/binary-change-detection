@@ -63,6 +63,10 @@ def load_gold_lsc(dataset):
         stats_groupings = pd.read_csv(f'{dataset}/stats/stats_groupings.tsv', sep='\t', encoding='utf-8')
     else:
         stats_groupings = pd.read_csv(f'{dataset}/stats/opt/stats_groupings.csv', sep='\t', encoding='utf-8')
+        # lemmas need to be normalized in dwug_es so that lemmas are sorted in the same order as 'words' in evaluate_model
+        # -> graded change score predictions at index i in lemmas and 'words' are for the same word
+        if "dwug_es" in dataset:
+            stats_groupings['lemma'] = stats_groupings['lemma'].str.normalize('NFKD')
     
     return stats_groupings
 
@@ -173,7 +177,7 @@ def read_data(dataset, paper_reproduction):
 """ 
 Evaluate WIC (edge weight predictions) with Spearman correlation
 """
-def WiC(edge_preds):
+def WiC(edge_preds, paper_reproduction):
     # edge_preds: list of dataframes (one df for every word)
     # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
 
@@ -182,13 +186,16 @@ def WiC(edge_preds):
     for df in edge_preds:
         y_pred.extend(df.edge_pred.values.tolist())
         y_true.extend(df.judgment.values.tolist())
-    # Filter nan values out
-    y_true = np.array(y_true)
-    y_pred = np.array(y_pred)
-    valid_indices = ~np.isnan(y_true) & ~np.isnan(y_pred)
-    filtered_y_true = y_true[valid_indices]
-    filtered_y_pred = y_pred[valid_indices]
-    return spearmanr(filtered_y_pred, filtered_y_true)
+
+    if paper_reproduction==False:
+        # Filter pd.na values out
+        valid_indices = [i for i, (x,y) in enumerate(zip(y_true, y_pred)) if not pd.isna(x) and not pd.isna(y)]
+        filtered_y_true = [y_true[i] for i in valid_indices]
+        filtered_y_pred = [y_pred[i] for i in valid_indices]
+        spearman_corr = spearmanr(filtered_y_pred, filtered_y_true)
+    else:
+        spearman_corr = spearmanr(y_pred, y_true)
+    return spearman_corr
 
 
 
@@ -301,7 +308,7 @@ def evaluate_wic(datasets, paper_reproduction):
         # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
 
         # Evaluate WIC (edge weight predictions) with Spearman correlation 
-        wic_spearman = WiC(edge_preds)
+        wic_spearman = WiC(edge_preds, paper_reproduction)
         
         # Add WIC Spearman Score to record 
         if paper_reproduction:
@@ -327,6 +334,8 @@ def evaluate_wic(datasets, paper_reproduction):
 Evaluates the model performance on WSI (Clustering evaluation with ARI (and Purity)) and Graded Change Detection (Spearman Correlation)
 """
 def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_list):
+    
+    print(f'\nDataset: {dataset}  \nClustering Method: {clustering_method}')
 
     if paper_reproduction:
         ds = dataset.replace("./paper_data/", "")
@@ -387,8 +396,15 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             # Evaluate clustering with ARI and Purity
             gold_clusters[i] = gold_clusters[i].sort_values('identifier')
 
+            # Filter cluster_labels of clusters that have no gold cluster out
+            if paper_reproduction==False:
+                cluster_labels = cluster_labels[cluster_labels['identifier'].isin(gold_clusters[i]['identifier'])].sort_values(['identifier']).reset_index()
+            
+
             clusters_metrics['adjusted_rand_score'].append(adjusted_rand_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
             clusters_metrics['purity'].append(purity_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
+            print(f'ARI: {clusters_metrics['adjusted_rand_score'][-1]}')
+            print(f'Purity: {clusters_metrics['purity'][-1]}')
 
             # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
             freq_dist, prob_dist = get_cluster_distributions(classes_sets)
@@ -399,8 +415,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             gc_pred = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
             bc_pred = predict_binary(freq_dist)
 
-            gc_true = gold_gc.iloc[0]['change_graded']
-            bc_true = gold_bc.iloc[0]['change_binary']
+            gc_true = gold_gc.iloc[i]['change_graded']
+            bc_true = gold_bc.iloc[i]['change_binary']
             clustering_pred = cluster_labels.set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
             # columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold']
             gold_clusters_word = gold_clusters[i].set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
@@ -446,9 +462,21 @@ if __name__=="__main__":
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       # no dwug_la 
     datasets = ["./data/" + dataset for dataset in datasets]
     
+    # Read data 
+    edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc = read_data("./data/chiwug", paper_reproduction=False)
+    # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
 
+    # Evaluate WIC (edge weight predictions) with Spearman correlation 
+    wic_spearman = WiC(edge_preds, paper_reproduction=False)
+    
+    # Add WIC Spearman Score to record 
+    new_line = "\t".join([str(i) for i in ["chiwug", wic_spearman[0].round(3)]]) + '\n'
+    print(new_line)
+
+    """
     # WSI and LSC evaluation 
 
     parameter_list = [[1],[2],[3]]
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="k-means", parameter_list=parameter_list)
+    """

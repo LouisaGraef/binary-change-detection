@@ -16,7 +16,7 @@ Paper Code: https://github.com/FrancescoPeriti/CSSDetection/blob/main/run_compar
 
 
 if __name__=="__main__":
-    
+    """
     # Download datasets used in paper  
     
     download_new_datasets()        
@@ -30,7 +30,7 @@ if __name__=="__main__":
     for dataset in datasets:
         subprocess.run(['bash', './wug_data2graph_pipeline.sh', dataset])           
     
-
+    
     # Computational Annotation (predict edge weights)
     for dataset in datasets:
         get_computational_annotation(dataset, paper_reproduction=False)
@@ -45,13 +45,13 @@ if __name__=="__main__":
     # WIC evaluation for all datasets except dwug_la
     evaluate_wic(datasets, paper_reproduction=False)
     
-
+    """
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      # all datasets
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]                               
     datasets = ["./data/" + dataset for dataset in datasets]
 
-
-
+    
+    """
     # Create Parameter Grids for WSI, GCD and BCD evaluation 
 
     
@@ -63,17 +63,17 @@ if __name__=="__main__":
     #parameter_list = [[0.3, 0.325, 0.35, 0.375, 0.4, 0.425, 0.45, 0.475, 0.5, 0.525, 0.55, 0.575, 0.6, 0.625, 0.65, 0.675, 0.7],
     #                  [100, 200, 500, 1000, 5000], [5000, 10000, 20000]]
     # parameter_list = [[0.4, 0.45, 0.5, 0.55, 0.6, 0.65], [100, 500, 1000, 5000], [10000, 20000]]
-    parameter_list = [[0.4, 0.425, 0.45, 0.475, 0.5, 0.525, 0.55, 0.575, 0.6, 0.625, 0.65, 0.675, 0.7],
-                      [100, 200, 500, 1000, 5000], [5000, 10000, 20000]]
+    parameter_list = [[0.45, 0.5, 0.55, 0.6, 0.65, 0.7],
+                      [200, 500, 1000, 5000], [5000, 10000, 20000]]
     
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="correlation", parameter_list=parameter_list) # create parameter grid
     
-
-
+    """
+    """
     # K-means Clustering
     # Parameter: n_init = [10, 30, 50], max_iter = [300, 400, 500]
-    parameter_list = [[10, 30, 50],[300, 400, 500]]
+    parameter_list = [[10, 50],[300, 500]]
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="k-means", parameter_list=parameter_list)   # create parameter grid
     
@@ -94,10 +94,11 @@ if __name__=="__main__":
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="spectral", parameter_list=parameter_list)   # create parameter grid
     
-    quit()
+    """
     # WSBM Clustering 
     # Parameters: Exponential and normal distribution (Sense through time)
-    parameter_list = [[exponential],[normal]]
+    #parameter_list = [["real-normal"], ["real-exponential"]]
+    parameter_list = [["real-exponential"]]
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="wsbm", parameter_list=parameter_list)   # create parameter grid
     
