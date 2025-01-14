@@ -25,6 +25,7 @@ from tqdm import tqdm
 
 """
 Process uses for one dataset (rename uses['grouping'] for Nordiachange subsets 1 and 2, remove uses with cluster '-1')
+(only relevant for paper reproduction)
 """
 def processing(dataset, uses, word):
 
@@ -95,10 +96,7 @@ def get_human_judgments_paper(dataset,word,words):
 """
 get a dataframe of mean human judgements and uses for one word
 """
-def get_human_judgment(dataset,word,words):
-    
-    # read in uses 
-    uses = pd.read_csv(f'{dataset}/data/{word}/uses.csv', sep='\t', quoting=csv.QUOTE_NONE, encoding="utf-8")
+def get_human_judgment(dataset,word):
 
     # read in human judgements from graphs
     with open(f'{dataset}/graphs/{word}', 'rb') as f:
@@ -107,21 +105,7 @@ def get_human_judgment(dataset,word,words):
     judgments_list = [(u, v, data['weight']) for u, v, data in gold_graph.edges(data=True)]
     judgments = pd.DataFrame(judgments_list, columns=['identifier1', 'identifier2', 'judgment'])
 
-
-    # remove useless columns 
-    uses = processing(dataset, uses, words)
-    
-    uses = uses[['identifier', 'context', 'indexes_target_token', 'grouping']]
-    uses['identifier'] = uses['identifier'].astype(str)
-
-
-    # uses of all identifier1 nodes, uses of all identifier2 nodes
-    # (df1.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
-    # (df2.columns.tolist() = ['identifier', 'context', 'indexes_target_token', 'grouping'])
-    df1 = judgments.merge(uses, left_on='identifier1', right_on='identifier').drop(columns=['identifier1', 'identifier2', 'judgment'])
-    df2 = judgments.merge(uses, left_on='identifier2', right_on='identifier').drop(columns=['identifier1', 'identifier2', 'judgment'])
-
-    return judgments, df1, df2
+    return judgments
 
 
 
@@ -228,26 +212,7 @@ def predict_all_edges(model, dataset, word, words, judgments):
         node2_data = graph.nodes[edge[1]]
         e_1, e_2 = node1_data['embedding'], node2_data['embedding']
 
-        """
-        node1_data = graph.nodes[edge[0]]
-        node2_data = graph.nodes[edge[1]]
 
-        # input data for xl-lexeme model 
-        context1, context2 = node1_data['context'], node2_data['context']
-        indexes1, indexes2 = node1_data['indexes_target_token'], node2_data['indexes_target_token']
-        indexes1, indexes2 = list(map(int, indexes1.split(':'))), list(map(int, indexes2.split(':')))
-
-        examples_1= InputExample(texts=context1, positions=indexes1)
-        examples_2= InputExample(texts=context2, positions=indexes2)
-
-        # generate embeddings
-        try:
-            e_1, e_2 = model.encode(examples_1), model.encode(examples_2)
-        except:
-            # no edge weight prediction if one sentence is too long 
-            continue                                    
-        else:
-"""
         E1.append(e_1)      # embeddings of identifier1 nodes 
         E2.append(e_2)
 
@@ -300,7 +265,7 @@ def get_computational_annotation(dataset, paper_reproduction):
             if dataset=="./data/dwug_la":       # no human edge judgments for dwug_la
                 judgments = None
             else:
-                judgments, df1, df2 = get_human_judgment(dataset,word,words)
+                judgments = get_human_judgment(dataset,word)
 
 
         if paper_reproduction:                                              # predict edge weights of all human annotated edges 

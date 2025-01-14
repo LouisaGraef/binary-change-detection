@@ -16,7 +16,7 @@ Paper Code: https://github.com/FrancescoPeriti/CSSDetection/blob/main/run_compar
 
 
 if __name__=="__main__":
-    """
+    
     # Download datasets used in paper  
     
     download_new_datasets()        
@@ -45,13 +45,13 @@ if __name__=="__main__":
     # WIC evaluation for all datasets except dwug_la
     evaluate_wic(datasets, paper_reproduction=False)
     
-    """
+    
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      # all datasets
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]                               
     datasets = ["./data/" + dataset for dataset in datasets]
 
     
-    """
+    
     # Create Parameter Grids for WSI, GCD and BCD evaluation 
 
     
@@ -69,8 +69,8 @@ if __name__=="__main__":
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="correlation", parameter_list=parameter_list) # create parameter grid
     
-    """
-    """
+    
+    
     # K-means Clustering
     # Parameter: n_init = [10, 30, 50], max_iter = [300, 400, 500]
     parameter_list = [[10, 50],[300, 500]]
@@ -94,10 +94,10 @@ if __name__=="__main__":
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="spectral", parameter_list=parameter_list)   # create parameter grid
     
-    """
+    
     # WSBM Clustering 
     # Parameters: Exponential and normal distribution (Sense through time)
-    parameter_list = [["real-exponential"], ["real-normal"]]
+    parameter_list = [["real-exponential", "real-normal"]]
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="wsbm", parameter_list=parameter_list)   # create parameter grid
     

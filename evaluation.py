@@ -403,8 +403,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
             clusters_metrics['adjusted_rand_score'].append(adjusted_rand_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
             clusters_metrics['purity'].append(purity_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
-            print(f'ARI: {clusters_metrics['adjusted_rand_score'][-1]}')
-            print(f'Purity: {clusters_metrics['purity'][-1]}')
+            print(f'ARI: {clusters_metrics['adjusted_rand_score'][-1]}\tPurity: {clusters_metrics['purity'][-1]}')
 
             # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
             freq_dist, prob_dist = get_cluster_distributions(classes_sets)

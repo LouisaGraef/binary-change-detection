@@ -15,7 +15,7 @@ Paper Code: https://github.com/FrancescoPeriti/CSSDetection/blob/main/run_compar
 
 
 if __name__=="__main__":
-    """
+    
     # Download datasets used in paper  
     download_paper_datasets()        
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
@@ -27,7 +27,7 @@ if __name__=="__main__":
     for dataset in datasets:
         get_computational_annotation(dataset, paper_reproduction=True)
     
-    """
+    
     # Evalation with WIC;WSI;GCD 
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]      
