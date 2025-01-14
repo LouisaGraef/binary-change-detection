@@ -85,9 +85,6 @@ if __name__=="__main__":
         evaluate_model(dataset, paper_reproduction=False, clustering_method="agglomerative", parameter_list=parameter_list)   # create parameter grid
     
     # Spectral Clustering
-    # Parameters: We use the scikit-learn21 implementation with default hyperparameters. We apply the K-means
-    # algorithm to find clusters in the reduced-dimensional space (Sense through time)
-    # Parameters: which clustering algorithm to apply in the reduced dimensional space?
     # affinity: ['nearest_neighbors', 'rbf', 'precomputed'] (how to construct the affinity matrix)
     # n_neighbors: [5, 10, 15] (number of neighbors if nearest_neighbors is used)
     parameter_list = [['nearest_neighbors', 'rbf', 'precomputed'],[5, 10, 15]]
