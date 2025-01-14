@@ -97,8 +97,7 @@ if __name__=="__main__":
     """
     # WSBM Clustering 
     # Parameters: Exponential and normal distribution (Sense through time)
-    #parameter_list = [["real-normal"], ["real-exponential"]]
-    parameter_list = [["real-exponential"]]
+    parameter_list = [["real-exponential"], ["real-normal"]]
     for dataset in datasets:
         evaluate_model(dataset, paper_reproduction=False, clustering_method="wsbm", parameter_list=parameter_list)   # create parameter grid
     
