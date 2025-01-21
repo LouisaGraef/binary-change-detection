@@ -12,6 +12,7 @@ from sklearn.cluster import KMeans, AgglomerativeClustering, SpectralClustering
 from sklearn.metrics import silhouette_score
 import graph_tool
 from clustering_interface_wsbm import wsbm_clustering
+import numpy as np
 
 
 """
@@ -70,13 +71,18 @@ parameter: distribution either 'real-normal' or 'real-exponential'.
 """
 def cluster_graph_wsbm(graph, parameters):
     graph = graph.copy()
-    # shift edge weights +1
-    for u, v, edge_data in graph.edges(data=True):
-        edge_data['weight'] += 1
 
-    classes = wsbm_clustering(graph, distribution=parameters[0], is_weighted=True, weight_attributes=['weight'], weight_data_type='float')
+    
+    # shift edge weights so that all edge weights are positive
+    weights = [edge_data['weight'] for u, v, edge_data in graph.edges(data=True)]
+    min_weight = min(weights)
+    if min_weight < 0:
+        for u, v, edge_data in graph.edges(data=True):
+            edge_data['weight'] += abs(min_weight)
+    
 
-    # print(classes)          # Tupel: 1st element list of sets of nodes, 2nd element dict with parameters
+
+    classes = wsbm_clustering(graph, distribution=parameters[0], is_weighted=True, weight_attributes=['weight'], weight_data_type='float', B_max=10)
 
     # Store cluster labels (cluster label for each node)
     labels = list()

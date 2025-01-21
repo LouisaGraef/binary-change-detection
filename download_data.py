@@ -66,12 +66,12 @@ def download_new_datasets():
 Downloads the versions of datasets used in the Paper (https://arxiv.org/pdf/2402.12011) into directory "./data".
 """
 def download_paper_datasets():
-    # List of datasets: DWUG DE, DWUG EN, DWUG SV, DWUG LA, DWUG ES, ChiWUG, NorDiaChange 
+    # List of datasets: DWUG DE, DWUG EN, DWUG SV, DWUG LA, DWUG ES, ChiWUG, NorDiaChange, DWUG DE Sense
     # dataset versions used in Paper (https://arxiv.org/pdf/2402.12011)
     datasets_paper_versions = ["https://zenodo.org/records/7441645/files/dwug_de.zip?download=1", "https://zenodo.org/records/7387261/files/dwug_en.zip?download=1",
                       "https://zenodo.org/records/7389506/files/dwug_sv.zip?download=1", "https://zenodo.org/records/5255228/files/dwug_la.zip?download=1",
                 "https://zenodo.org/records/6433667/files/dwug_es.zip?download=1", "https://zenodo.org/records/10023263/files/chiwug.zip?download=1",
-                "https://github.com/ltgoslo/nor_dia_change/archive/refs/heads/main.zip"] 
+                "https://github.com/ltgoslo/nor_dia_change/archive/refs/heads/main.zip", "https://zenodo.org/records/8197553/files/dwug_de_sense.zip?download=1"] 
     download_datasets(datasets_paper_versions, paper_datasets=True)
 
 

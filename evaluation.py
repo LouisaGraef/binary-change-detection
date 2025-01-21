@@ -381,10 +381,17 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
     words = sorted(os.listdir(f'{dataset}/data/'))
     
     combinations = list(itertools.product(*parameter_list))     # all parameter combinations
+    
+    if clustering_method=="correlation":
+        standard_parameter_list = [[0.45, 0.5, 0.55, 0.6, 0.65], [200], [5000]]     # add standard parameters for max_attempts and max_iters 
+        combinations = combinations + list(itertools.product(*standard_parameter_list))
 
     for comb in combinations:
         if comb[0] == 'ward' and not comb[1] == 'euclidean':    # Agglomerative clustering: Ward can only work with euclidean distances.
             continue
+        if comb[0] == 'rbf' and (comb[1] == 10 or comb[1] == 15):   # Spectral clustering: n_neighbors not relevant for rbf (only let rbf run once)
+            continue
+        print(f'\n\nParameters: {comb}')
         for i, word in enumerate(words):                    # iterate over words
             if paper_reproduction:
                 word_edge_preds = edge_preds[i]
@@ -400,7 +407,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
             # Filter cluster_labels of clusters that have no gold cluster out
             if paper_reproduction==False:
-                cluster_labels = cluster_labels[cluster_labels['identifier'].isin(gold_clusters[i]['identifier'])].sort_values(['identifier']).reset_index()
+                cluster_labels = cluster_labels[cluster_labels['identifier'].isin(gold_clusters[i]['identifier'])].sort_values(['identifier']).reset_index(drop=True)
+                gold_clusters[i] = gold_clusters[i][gold_clusters[i]['identifier'].isin(cluster_labels['identifier'])].sort_values(['identifier']).reset_index(drop=True)
             
 
             clusters_metrics['adjusted_rand_score'].append(adjusted_rand_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
@@ -424,7 +432,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             new_grid_row = {'parameter_combination': comb, 'word': word, 'GC_pred': gc_pred, 'GC_gold': gc_true, 
                             'BC_pred': bc_pred, 'BC_gold': bc_true, 'clustering_pred': clustering_pred, 'clustering_gold': gold_clusters_word}
             parameter_grid.loc[len(parameter_grid)] = new_grid_row
-        print(comb)
+        
 
 
 
@@ -457,6 +465,10 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
 
 if __name__=="__main__":
+
+    parameter_list = [['ward', 'average', 'complete', 'single'],['euclidean', 'cosine']]
+    evaluate_model("./data/dwug_la", paper_reproduction=False, clustering_method="agglomerative", parameter_list=parameter_list)
+    quit()
     
     # Evalation with WIC;WSI;GCD 
     datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
