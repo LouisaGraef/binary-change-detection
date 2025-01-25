@@ -23,6 +23,7 @@ conda install matplotlib
 conda install pygraphviz 
 conda install dill
 conda install chardet
+conda install seaborn
 
 # Additional packages not available with conda
 conda install pip

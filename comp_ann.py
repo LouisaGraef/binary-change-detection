@@ -96,7 +96,7 @@ def get_human_judgments_paper(dataset,word,words):
 """
 get a dataframe of mean human judgements and uses for one word
 """
-def get_human_judgment(dataset,word):
+def get_human_judgments(dataset,word):
 
     # read in human judgements from graphs
     with open(f'{dataset}/graphs/{word}', 'rb') as f:
@@ -265,7 +265,7 @@ def get_computational_annotation(dataset, paper_reproduction):
             if dataset=="./data/dwug_la":       # no human edge judgments for dwug_la
                 judgments = None
             else:
-                judgments = get_human_judgment(dataset,word)
+                judgments = get_human_judgments(dataset,word)
 
 
         if paper_reproduction:                                              # predict edge weights of all human annotated edges 
