@@ -6,6 +6,9 @@ from itertools import combinations, product
 from modules import get_node_std, get_clusters, get_low_prob_clusters
 import csv
 import os
+import pandas as pd
+from pathlib import Path
+import dill
 
 
 
@@ -16,19 +19,118 @@ WUG graph2clean2.py: https://github.com/Garrafao/WUGs/blob/main/scripts/graph2cl
 """
 
 
+"""
+Get a list of parameters for every cleaning method.
+Returns a dictionary with cleaning parameters for every cleaning method ("stdnode", "dgrnode", "clustersize", "cntcluster")
+"""
+def get_parameters(dataset):
+    parameters = {}
+    words = sorted(os.listdir(f'{dataset}/data/'))
+
+    
+    dataset_node_avg_stds = []
+    dataset_nodes_degrees = []
+    dataset_clustersizes = []
+    dataset_cntcluster_values = []
+    word_counter = 0
+    for word in words:
+
+        # load graph
+        with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
+            graph = pickle.load(f)
+        with open(f"{dataset}/data/{word}/judgments.csv", encoding='utf-8') as csvfile: 
+            reader = csv.DictReader(csvfile, delimiter='\t',quoting=csv.QUOTE_NONE,strict=True)
+            annotators = [row['annotator'] for row in reader]
+        
+        g = graph.copy()
+
+
+        # stdnode (average standard deviation on the node's edges)
+        node2stds = get_node_std(g, annotators, normalization=lambda x: ((x-1)/3.0))
+        # list of average standard deviation of each node 
+        node_avg_stds = [np.nanmean(node2stds[n]) if n in node2stds and len(node2stds[n]) > 0 and not all(np.isnan(node2stds[n])) else 0 for n in g.nodes()]       
+        dataset_node_avg_stds= dataset_node_avg_stds + node_avg_stds
+
+        # dgrnode (degree of nodes (number of edges))
+        nodes_degrees = [d for (node, d) in g.degree()]
+        dataset_nodes_degrees = dataset_nodes_degrees + nodes_degrees
+
+        # clustersize (size of clusters)
+        clusters, _, _ = get_clusters(g)
+        clustersizes = [len(cluster) for cluster in clusters]
+        dataset_clustersizes = dataset_clustersizes + clustersizes
+
+        # cntcluster ()
+        clusters, _, _ = get_clusters(g, is_include_noise = False, is_include_main = True)
+        combo2edges = {}
+        for (c1,c2) in combinations(range(len(clusters)), 2):
+            cluster1, cluster2 = clusters[c1], clusters[c2]
+            combo2edges[(c1,c2)] = []
+            size = 0
+            for (i,j) in product(cluster1,cluster2):
+                size += 1
+                if j in g.neighbors(i):
+                    combo2edges[(c1,c2)].append((i,j))
+        cluster2connectedness_values = {}    
+        for c in range(len(clusters)):
+            connectedness_values = []
+            for (c1,c2), edges in combo2edges.items():
+                if c1==c or c2==c:
+                    value = 1 if len(edges)>0 else 0
+                    connectedness_values.append(value)
+            cluster2connectedness_values[c] = connectedness_values
+        assert len(cluster2connectedness_values.keys()) == len(clusters)
+        cluster_connectedness_values = [np.mean(values) for c, values in cluster2connectedness_values.items()]
+        dataset_cntcluster_values = dataset_cntcluster_values + cluster_connectedness_values
+        print(dataset_cntcluster_values)
+        
+        word_counter += 1
+        print(word_counter)
+
+
+    methods = "stdnode", "dgrnode", "clustersize", "cntcluster"
+
+    # sort, get percentiles, remove duplikate percentiles
+    for k, method in zip([dataset_node_avg_stds, dataset_nodes_degrees, dataset_clustersizes, dataset_cntcluster_values], methods):
+        k.sort()
+        print(type(k), len(k), k[:5])
+        k = [x for x in k if not np.isnan(x)]
+        percentiles = np.percentile(k, np.linspace(0, 100, 51))    # get 50 percentiles
+        percentiles = np.unique(percentiles)
+        parameters[method] = percentiles
+    
+    print(parameters)
+
+
+    # save cleaning parameters
+    if dataset.startswith("./paper_data/"):
+        ds = dataset.replace("./paper_data/", "")
+        os.makedirs(f"./cleaning_parameters/paper/{ds}", exist_ok=True)
+        with open(f"./cleaning_parameters/paper/{ds}/cleaning_parameters.pkl", "wb") as file:
+            dill.dump(parameters, file)
+    else:
+        ds = dataset.replace("./data/", "")
+        os.makedirs(f"./cleaning_parameters/{ds}", exist_ok=True)
+        with open(f"./cleaning_parameters/{ds}/cleaning_parameters.pkl", "wb") as file:
+            dill.dump(parameters, file)
+
+
+    
+
+
 
 """
 Clean a graph with specified method. 
 """
-def clean_graph(g, method, annotators):
+def clean_graph(g, method, annotators, parameter):
     if method=="stdnode":
-        g = clean_stdnode(g, annotators, std_nodes=0.07)
+        g = clean_stdnode(g, annotators, std_nodes=parameter)
     elif method=="clustersize":
-        g = clean_clustersize(g, cluster_size_min=3)
+        g = clean_clustersize(g, cluster_size_min=parameter)
     elif method=="dgrnode":
-        g = clean_dgrnode(g, degree_remove=5)
+        g = clean_dgrnode(g, degree_remove=parameter)
     elif method=="cntcluster":
-        g = clean_cntcluster(g, cluster_connect_min=0.95)
+        g = clean_cntcluster(g, cluster_connect_min=parameter)
     
     return g
 
@@ -41,8 +143,12 @@ def clean_stdnode(g, annotators, std_nodes):
     # remove nodes with high standard deviation
     std_nodes=float(std_nodes)    
     node2stds = get_node_std(g, annotators, normalization=lambda x: ((x-1)/3.0))
+    #print(node2stds)
+    #node2stds = {n: [x for x in node2stds[n] if np.isfinite(x)] for n in node2stds}
+    #print(node2stds)
+    #nodes_high_stds = [n for n in g.nodes() if not all(np.isnan(node2stds[n])) and len(node2stds[n]) > 1 and np.nanmean(node2stds[n]) > std_nodes]
     nodes_high_stds = [n for n in g.nodes() if np.nanmean(node2stds[n]) > std_nodes]
-    print('Removing {0} nodes with standard deviation above {1}.'.format(len(nodes_high_stds),std_nodes))
+    #print('Removing {0} nodes with standard deviation above {1}.'.format(len(nodes_high_stds),std_nodes))
     g.remove_nodes_from(nodes_high_stds)    
     g.graph['cleaning_stats'] = g.graph['cleaning_stats'] | {'std_nodes':std_nodes}
 
@@ -59,7 +165,7 @@ def clean_clustersize(g, cluster_size_min):
     cluster_ids_remove = get_low_prob_clusters(clusters, threshold=cluster_size_min)
     nodes_remove = [node for cluster_id in cluster_ids_remove for node in clusters[cluster_id]]
     g.remove_nodes_from(nodes_remove) 
-    print('Removing {0} nodes from clusters with size less than {1}.'.format(len(nodes_remove),cluster_size_min))
+    #print('Removing {0} nodes from clusters with size less than {1}.'.format(len(nodes_remove),cluster_size_min))
     g.graph['cleaning_stats'] = g.graph['cleaning_stats'] | {'cluster_size_remove':cluster_size_min}
 
     return g
@@ -73,7 +179,7 @@ def clean_dgrnode(g, degree_remove):
     degree_remove=int(degree_remove)    
     nodes_degrees = [node for (node, d) in g.degree() if d<degree_remove]
     g.remove_nodes_from(nodes_degrees) 
-    print('Removing {0} nodes with degree less than {1}.'.format(len(nodes_degrees),degree_remove))
+    #print('Removing {0} nodes with degree less than {1}.'.format(len(nodes_degrees),degree_remove))
     g.graph['cleaning_stats'] = g.graph['cleaning_stats'] | {'degree_remove':degree_remove}
 
     return g
@@ -107,38 +213,20 @@ def clean_cntcluster(g, cluster_connect_min):
                     value = 1 if len(edges)>0 else 0
                     connectedness_values.append(value)
             cluster2connectedness_values[c] = connectedness_values
-        print(cluster2connectedness_values)
+        #print(cluster2connectedness_values)
         assert len(cluster2connectedness_values.keys()) == len(clusters)
         clusters_remove = [c for c, values in cluster2connectedness_values.items() if np.mean(values)<cluster_connect_min]
         nodes_remove = [node for c in clusters_remove for node in clusters[c]]
         g.remove_nodes_from(nodes_remove) 
     g.graph['cleaning_stats'] = g.graph['cleaning_stats'] | {'cluster_size_remove':cluster_connect_min}
-    print('Removing {0} nodes from clusters with average connectedness less than {1}.'.format(len(nodes_remove),cluster_connect_min))
+    #print('Removing {0} nodes from clusters with average connectedness less than {1}.'.format(len(nodes_remove),cluster_connect_min))
 
     return g
 
 
 
+
 """
-def plot_stats(avg_df):
-    pass
-
-def evaluate_clean_graph(dataset):
-    methods = ["dgrnode", "random"]
-    graph = None
-    words = []
-    dfs = []
-    for method in methods:
-        for word in words:
-            for n_nodes in range(len(graph.nodes)):
-                graph_cleaned = clean_graph(graph)
-                # evaluate cleaning (n_nodes, n_clusters, ARI)
-                cleaning_df = None
-
-    avg_df = np.avg(dfs)
-    plot_stats(avg_df)
-
-
 def get_conflicts(dataset):
     methods = ["dgrnode", "random"]
     graph = None
@@ -156,12 +244,28 @@ def get_conflicts(dataset):
 """
 
 
+
+"""
+Clean graphs of one dataset with different methods ("stdnode", "dgrnode", "clustersize", "cntcluster")
+"""
 def clean_graphs(dataset):
     
-    
+    df_cleaning = pd.DataFrame(columns=['identifier', 'cluster', 'model', 'strategy', 'threshold', 'lemma'])
     words = sorted(os.listdir(f'{dataset}/data/'))
+    counter = 0
+
+    if dataset.startswith("./paper_data/"):
+        ds = dataset.replace("./paper_data/", "")
+        with open(f"./cleaning_parameters/paper/{ds}/cleaning_parameters.pkl", "rb") as file:
+            parameters = dill.load(file)
+    else:
+        ds = dataset.replace("./data/", "")
+        with open(f"./cleaning_parameters/{ds}/cleaning_parameters.pkl", "rb") as file:
+            parameters = dill.load(file)
+
 
     for word in words:
+        clusters = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep="\t")
 
         # load graph
         with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
@@ -171,19 +275,46 @@ def clean_graphs(dataset):
             annotators = [row['annotator'] for row in reader]
 
         # clean graph 
+        #methods = ["stdnode", "dgrnode", "clustersize", "cntcluster"]
         methods = ["stdnode", "dgrnode", "clustersize", "cntcluster"]
         for method in methods:
-            g = graph.copy()
-            print('Input graph: ', g)
-            g.graph['cleaning_stats'] = {}
-            g = clean_graph(g, method, annotators)
-            print('Cleaned graph: ', g)
+            for parameter in parameters[method]:
+                model = str(method) + "_" + str(parameter)
+                g = graph.copy()
+                #print('Input graph: ', g)
+                g.graph['cleaning_stats'] = {}
+                g = clean_graph(g, method, annotators, parameter)
+                #print('Cleaned graph: ', g)
+
+                for node in g.nodes:
+                    cluster = clusters.loc[clusters['identifier'] == node, 'cluster'].values[0]     # cluster of node 
+                    # insert new row to df_cleaning 
+                    df_cleaning.loc[len(df_cleaning)] = [node, cluster, model, method, parameter, word]
+            print(".")
+        counter +=1
+        print(counter)
+
+
+    # save cleaning parameter grid
+    if dataset.startswith("./paper_data/"):
+        ds = dataset.replace("./paper_data/", "")
+        os.makedirs(f"./cleaning_parameter_grids/paper/{ds}", exist_ok=True)
+        with open(f"./cleaning_parameter_grids/paper/{ds}/cleaning_parameter_grid.pkl", "wb") as file:
+            dill.dump(df_cleaning, file)
+    else:
+        ds = dataset.replace("./data/", "")
+        os.makedirs(f"./cleaning_parameter_grids/{ds}", exist_ok=True)
+        with open(f"./cleaning_parameter_grids/{ds}/cleaning_parameter_grid.pkl", "wb") as file:
+            dill.dump(df_cleaning, file)
+
+    return df_cleaning
 
 
 
 
 
 if __name__=="__main__":
+    #parameters = get_parameters(dataset="./paper_data/dwug_de")
     clean_graphs(dataset="./paper_data/dwug_de")
 
     

@@ -7,7 +7,8 @@ import numpy as np
 from sklearn.metrics import adjusted_rand_score, rand_score
 import matplotlib.pyplot as plt
 import os
-from download_data import download_paper_datasets
+from download_data import download_paper_datasets, download_new_datasets
+from cleaning import clean_graphs
 
 
 
@@ -17,15 +18,18 @@ Paper Code: https://github.com/Garrafao/wug_cluster_clean/blob/main/analyze_seme
 WUG graph2clean2.py: https://github.com/Garrafao/WUGs/blob/main/scripts/graph2clean2.py 
 """
 
+#download_new_datasets()
+#dataset = './data/dwug_de'                     # new dwug_de and dwug_de_sense versions 
+#dwug_de_sense = './data/dwug_de_sense'
 
-
-download_paper_datasets()
-
+#download_paper_datasets()
+dataset = './paper_data/dwug_de'                # paper versions of dwug_de and dwug_de_sense
+dwug_de_sense = './paper_data/dwug_de_sense'
 
 
 
 df_dwug_de = pd.DataFrame()
-for p in Path('./paper_data/dwug_de/').glob('clusters/opt/*.csv'):    
+for p in Path(f'{dataset}/').glob('clusters/opt/*.csv'):    
     lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','')
     lemma = unicodedata.normalize('NFC', lemma)
     df = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
@@ -34,7 +38,7 @@ for p in Path('./paper_data/dwug_de/').glob('clusters/opt/*.csv'):
 
 # Extract grouping (time) information
 df_dwug_de_uses = pd.DataFrame()
-for p in Path('./paper_data/dwug_de/data').glob('*/uses.csv'):
+for p in Path(f'{dataset}/data').glob('*/uses.csv'):
     df_dwug_de_uses = pd.concat([df_dwug_de_uses, pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)])
 #display(df_dwug_de_uses)
 
@@ -47,7 +51,7 @@ df_dwug_de = df_dwug_de.merge(df_dwug_de_uses[['identifier', 'grouping']], how='
 # Get some data
 
 df_dwug_de_sense = pd.DataFrame()
-for p in Path('./paper_data/dwug_de_sense/labels/').glob('*/maj_3/labels_senses.csv'): 
+for p in Path(f'{dwug_de_sense}/labels/').glob('*/maj_3/labels_senses.csv'): 
     lemma = str(p).replace('\\', '/').split('/')[-3] # for windows
     lemma = unicodedata.normalize('NFC', lemma)
     df = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
@@ -56,7 +60,6 @@ for p in Path('./paper_data/dwug_de_sense/labels/').glob('*/maj_3/labels_senses.
 
 
 df_dwug_de_sense_clean = df_dwug_de_sense[~df_dwug_de_sense['label'].eq('-1')]      # filter uses with label -1 out
-print(df_dwug_de_sense_clean)
 targets = df_dwug_de_sense_clean['lemma'].unique()
 target2index = {target:index for index, target in enumerate(targets)}
 index2target = {index:target for index, target in enumerate(targets)}
@@ -66,6 +69,13 @@ labels = df_dwug_de_sense_clean['label']
 
 
 df_cleaning = pd.read_pickle("analyze_semeval_de1_df_cleaning.pkl")
+
+print(df_cleaning)
+quit()
+df_cleaning = clean_graphs(dataset)
+print(df_cleaning)
+quit()
+
 
 
 
