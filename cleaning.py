@@ -146,8 +146,8 @@ def clean_stdnode(g, annotators, std_nodes):
     #print(node2stds)
     #node2stds = {n: [x for x in node2stds[n] if np.isfinite(x)] for n in node2stds}
     #print(node2stds)
-    #nodes_high_stds = [n for n in g.nodes() if not all(np.isnan(node2stds[n])) and len(node2stds[n]) > 1 and np.nanmean(node2stds[n]) > std_nodes]
-    nodes_high_stds = [n for n in g.nodes() if np.nanmean(node2stds[n]) > std_nodes]
+    nodes_high_stds = [n for n in g.nodes() if not all(np.isnan(node2stds[n])) and len(node2stds[n]) > 1 and np.nanmean(node2stds[n]) > std_nodes]
+    #nodes_high_stds = [n for n in g.nodes() if np.nanmean(node2stds[n]) > std_nodes]
     #print('Removing {0} nodes with standard deviation above {1}.'.format(len(nodes_high_stds),std_nodes))
     g.remove_nodes_from(nodes_high_stds)    
     g.graph['cleaning_stats'] = g.graph['cleaning_stats'] | {'std_nodes':std_nodes}

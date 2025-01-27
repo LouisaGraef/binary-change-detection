@@ -68,14 +68,20 @@ indices = np.array(list(target2index.values())).reshape(-1, 1)
 labels = df_dwug_de_sense_clean['label']  
 
 
-df_cleaning = pd.read_pickle("analyze_semeval_de1_df_cleaning.pkl")
+#df_cleaning = pd.read_pickle("analyze_semeval_de1_df_cleaning.pkl")
+if "paper_data" in dataset:
+    df_cleaning = pd.read_pickle(f"./cleaning_parameter_grids/paper/dwug_de/cleaning_parameter_grid.pkl")
+else: 
+    ds = dataset.replace("./data/", "")
+    df_cleaning = pd.read_pickle(f"./cleaning_parameter_grids/{ds}/cleaning_parameter_grid.pkl")
 
+"""
 print(df_cleaning)
 quit()
 df_cleaning = clean_graphs(dataset)
 print(df_cleaning)
 quit()
-
+"""
 
 
 
@@ -254,16 +260,22 @@ groups_strategy = gb_strategy.groups
 gb_strategy_random = df_results_cleaning_random_mean.groupby('strategy')
 groups_strategy_random = gb_strategy_random.groups
 results = []
-reference_result = df_results_cleaning_mean[(df_results_cleaning_mean['strategy'].eq('degreeremove')) & (df_results_cleaning_mean['threshold_mean'] == 1.0)]   
+#reference_result = df_results_cleaning_mean[(df_results_cleaning_mean['strategy'].eq('degreeremove')) & (df_results_cleaning_mean['threshold_mean'] == 1.0)]   
+reference_result = df_results_cleaning_mean[(df_results_cleaning_mean['strategy'].eq('dgrnode')) & (df_results_cleaning_mean['threshold_mean'] == 1.0)]   
 #reference_result = df_results_cleaning_mean.iloc[0:1] # for testing
 #display(reference_result)
+
+print("\n")
+print(reference_result)
+
 reference_result_ari = reference_result['ARI_mean'].to_list()[0]
 
 for strategy in groups_strategy.keys():
     #print(word)
     #if strategy == 'collapse':
     #    continue
-    if strategy == 'degreeremove':
+    #if strategy == 'degreeremove':
+    if strategy == 'dgrnode':
         df_strategy = gb_strategy.get_group(strategy).sort_values(by='threshold_mean', ascending=False)
         df_strategy_random = gb_strategy_random.get_group(strategy).sort_values(by='threshold_mean', ascending=False)
     else:
@@ -456,20 +468,30 @@ pdf = pd.concat([pdf]+[annotate(
 import seaborn as sns
 sns.set_context('talk')
 
-strategy_order = ['stdnode','degreeremove','clustersizemin','clusterconnectmin','random']
-strategy_order = ['stdnode','degreeremove','clustersizemin','clusterconnectmin','random']
+#strategy_order = ['stdnode','degreeremove','clustersizemin','clusterconnectmin','random']
+#strategy_order = ['stdnode','degreeremove','clustersizemin','clusterconnectmin','random']
+strategy_order = ['stdnode','dgrnode','clustersize','cntcluster','random']
+strategy_order = ['stdnode','dgrnode','clustersize','cntcluster','random']
 # plotdf = pdf[pdf.strategy.isin(strategy_order)]
 plotdf = pdf
 
 
 
 # Individual plots for each lemma
-
+"""
 method2papername = {
     'stdnode':'stdnode',
     'degreeremove':'dgrnode',
     'clustersizemin':'sizecluster',
     'clusterconnectmin':'cntcluster',
+    'random':'random',
+}
+"""
+method2papername = {
+    'stdnode':'stdnode',
+    'dgrnode':'dgrnode',
+    'clustersize':'sizecluster',
+    'cntcluster':'cntcluster',
     'random':'random',
 }
 
@@ -505,7 +527,7 @@ mpdf['size'] = mpdf.strategy.apply(lambda x: 2 if x in {'collapse','stdedge'} el
 mpdf
 
 
-
+"""
 # Collapse plots 
 
 pdf['thres'] = pdf.model.str.split('_').str[-1].astype(float)
@@ -523,7 +545,7 @@ g = sns.relplot(data=mpdf.query('strategy=="collapse"'), x='thres',y='ari', kind
 g.set(ylim=(0.0,0.8))
 g.axes[0,0].axvline(argmax_thres)
 g.savefig('collapsing_avg_ari.pdf')
-
+"""
 
 
 # clustering quality metrics averaged across survived target words 
