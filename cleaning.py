@@ -3,7 +3,7 @@
 import numpy as np
 import pickle
 from itertools import combinations, product
-from modules import get_node_std, get_clusters, get_low_prob_clusters
+from modules import get_node_std, get_clusters, get_low_prob_clusters, get_nan_edges
 import csv
 import os
 import pandas as pd
@@ -33,26 +33,37 @@ def get_parameters(dataset):
     dataset_clustersizes = []
     dataset_cntcluster_values = []
     word_counter = 0
-    for word in words:
+
+    with open(f'{dataset}/annotators.csv', encoding='utf-8') as csvfile: 
+        reader = csv.DictReader(csvfile, delimiter='\t',quoting=csv.QUOTE_NONE,strict=True)
+        annotators = [row['annotator'] for row in reader]
+
+    for word in words:      # words for which a graph exists
 
         # load graph
         with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
             graph = pickle.load(f)
-        with open(f"{dataset}/data/{word}/judgments.csv", encoding='utf-8') as csvfile: 
-            reader = csv.DictReader(csvfile, delimiter='\t',quoting=csv.QUOTE_NONE,strict=True)
-            annotators = [row['annotator'] for row in reader]
-        
         g = graph.copy()
 
+        # remove nan edges and noise
+        nan_edges = get_nan_edges(graph)    
+        graph.remove_edges_from(nan_edges)
+        noise, _, _ = get_clusters(graph, is_include_noise = True, is_include_main = False)
+        nodes_noise = [node for cluster in noise for node in cluster]
+        graph.remove_nodes_from(nodes_noise) # Remove noise nodes before ambiguity measures  
+        
 
         # stdnode (average standard deviation on the node's edges)
-        node2stds = get_node_std(g, annotators, normalization=lambda x: ((x-1)/3.0))
+        node2stds = get_node_std(g, annotators, non_value=0.0, normalization=lambda x: ((x-1)/3.0))
         # list of average standard deviation of each node 
-        node_avg_stds = [np.nanmean(node2stds[n]) if n in node2stds and len(node2stds[n]) > 0 and not all(np.isnan(node2stds[n])) else 0 for n in g.nodes()]       
-        dataset_node_avg_stds= dataset_node_avg_stds + node_avg_stds
+        #node_avg_stds = [np.nanmean(node2stds[n]) if n in node2stds and len(node2stds[n]) > 0 and not all(np.isnan(node2stds[n])) else 0 for n in g.nodes()]       
+        nodes_mean_stds = [np.nanmean(node2stds[n]) for n in graph.nodes()]
+        dataset_node_avg_stds= dataset_node_avg_stds + nodes_mean_stds
 
         # dgrnode (degree of nodes (number of edges))
         nodes_degrees = [d for (node, d) in g.degree()]
+        #nodes_degrees.append(0)
+        #nodes_degrees = [g.degree(node) for node in g.nodes()]
         dataset_nodes_degrees = dataset_nodes_degrees + nodes_degrees
 
         # clustersize (size of clusters)
@@ -82,22 +93,24 @@ def get_parameters(dataset):
         assert len(cluster2connectedness_values.keys()) == len(clusters)
         cluster_connectedness_values = [np.mean(values) for c, values in cluster2connectedness_values.items()]
         dataset_cntcluster_values = dataset_cntcluster_values + cluster_connectedness_values
-        print(dataset_cntcluster_values)
+        #print(dataset_cntcluster_values)
         
         word_counter += 1
         print(word_counter)
 
 
     methods = "stdnode", "dgrnode", "clustersize", "cntcluster"
+    percentiles = [2*i for i in range(51)]
 
     # sort, get percentiles, remove duplikate percentiles
     for k, method in zip([dataset_node_avg_stds, dataset_nodes_degrees, dataset_clustersizes, dataset_cntcluster_values], methods):
-        k.sort()
-        print(type(k), len(k), k[:5])
-        k = [x for x in k if not np.isnan(x)]
-        percentiles = np.percentile(k, np.linspace(0, 100, 51))    # get 50 percentiles
-        percentiles = np.unique(percentiles)
-        parameters[method] = percentiles
+        #k.sort()
+        #print(type(k), len(k), k[:5])
+        #k = [x for x in k if not np.isnan(x)]
+        #percentiles = np.percentile(k, np.linspace(0, 100, 51))    # get 50 percentiles
+        variable_percentiles = np.nanpercentile(k, percentiles)
+        variable_percentiles = np.unique(variable_percentiles)
+        parameters[method] = variable_percentiles
     
     print(parameters)
 
@@ -314,8 +327,8 @@ def clean_graphs(dataset):
 
 
 if __name__=="__main__":
-    #parameters = get_parameters(dataset="./paper_data/dwug_de")
-    clean_graphs(dataset="./paper_data/dwug_de")
+    get_parameters(dataset="./paper_data/dwug_de")
+    #clean_graphs(dataset="./paper_data/dwug_de")
 
     
 
