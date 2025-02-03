@@ -23,8 +23,11 @@ WUG graph2clean2.py: https://github.com/Garrafao/WUGs/blob/main/scripts/graph2cl
 #dwug_de_sense = './data/dwug_de_sense'
 
 #download_paper_datasets()
-dataset = './paper_data/dwug_de'                # paper versions of dwug_de and dwug_de_sense
-dwug_de_sense = './paper_data/dwug_de_sense'
+#dataset = './paper_data/dwug_de'                # paper versions of dwug_de and dwug_de_sense
+#dwug_de_sense = './paper_data/dwug_de_sense'
+
+dataset = './data/dwug_de'                # paper versions of dwug_de and dwug_de_sense
+dwug_de_sense = './data/dwug_de_sense'
 
 
 

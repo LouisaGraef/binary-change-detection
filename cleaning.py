@@ -9,6 +9,7 @@ import os
 import pandas as pd
 from pathlib import Path
 import dill
+from download_data import download_paper_datasets, download_new_datasets
 
 
 
@@ -42,22 +43,21 @@ def get_parameters(dataset):
 
         # load graph
         with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
-            graph = pickle.load(f)
-        g = graph.copy()
+            g = pickle.load(f)
 
         # remove nan edges and noise
-        nan_edges = get_nan_edges(graph)    
-        graph.remove_edges_from(nan_edges)
-        noise, _, _ = get_clusters(graph, is_include_noise = True, is_include_main = False)
+        nan_edges = get_nan_edges(g)    
+        g.remove_edges_from(nan_edges)
+        noise, _, _ = get_clusters(g, is_include_noise = True, is_include_main = False)
         nodes_noise = [node for cluster in noise for node in cluster]
-        graph.remove_nodes_from(nodes_noise) # Remove noise nodes before ambiguity measures  
+        g.remove_nodes_from(nodes_noise) # Remove noise nodes before ambiguity measures  
         
 
         # stdnode (average standard deviation on the node's edges)
         node2stds = get_node_std(g, annotators, non_value=0.0, normalization=lambda x: ((x-1)/3.0))
         # list of average standard deviation of each node 
         #node_avg_stds = [np.nanmean(node2stds[n]) if n in node2stds and len(node2stds[n]) > 0 and not all(np.isnan(node2stds[n])) else 0 for n in g.nodes()]       
-        nodes_mean_stds = [np.nanmean(node2stds[n]) for n in graph.nodes()]
+        nodes_mean_stds = [np.nanmean(node2stds[n]) for n in g.nodes()]
         dataset_node_avg_stds= dataset_node_avg_stds + nodes_mean_stds
 
         # dgrnode (degree of nodes (number of edges))
@@ -136,6 +136,9 @@ def get_parameters(dataset):
 Clean a graph with specified method. 
 """
 def clean_graph(g, method, annotators, parameter):
+    
+    g = g.copy()
+
     if method=="stdnode":
         g = clean_stdnode(g, annotators, std_nodes=parameter)
     elif method=="clustersize":
@@ -159,8 +162,8 @@ def clean_stdnode(g, annotators, std_nodes):
     #print(node2stds)
     #node2stds = {n: [x for x in node2stds[n] if np.isfinite(x)] for n in node2stds}
     #print(node2stds)
-    nodes_high_stds = [n for n in g.nodes() if not all(np.isnan(node2stds[n])) and len(node2stds[n]) > 1 and np.nanmean(node2stds[n]) > std_nodes]
-    #nodes_high_stds = [n for n in g.nodes() if np.nanmean(node2stds[n]) > std_nodes]
+    #nodes_high_stds = [n for n in g.nodes() if not all(np.isnan(node2stds[n])) and len(node2stds[n]) > 1 and np.nanmean(node2stds[n]) > std_nodes]
+    nodes_high_stds = [n for n in g.nodes() if np.nanmean(node2stds[n]) > std_nodes]
     #print('Removing {0} nodes with standard deviation above {1}.'.format(len(nodes_high_stds),std_nodes))
     g.remove_nodes_from(nodes_high_stds)    
     g.graph['cleaning_stats'] = g.graph['cleaning_stats'] | {'std_nodes':std_nodes}
@@ -283,9 +286,17 @@ def clean_graphs(dataset):
         # load graph
         with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
             graph = pickle.load(f)
-        with open(f"{dataset}/data/{word}/judgments.csv", encoding='utf-8') as csvfile: 
+        with open(f'{dataset}/annotators.csv', encoding='utf-8') as csvfile: 
             reader = csv.DictReader(csvfile, delimiter='\t',quoting=csv.QUOTE_NONE,strict=True)
             annotators = [row['annotator'] for row in reader]
+        
+        # remove nan edges and noise
+        nan_edges = get_nan_edges(graph)    
+        graph.remove_edges_from(nan_edges)
+        noise, _, _ = get_clusters(graph, is_include_noise = True, is_include_main = False)
+        nodes_noise = [node for cluster in noise for node in cluster]
+        graph.remove_nodes_from(nodes_noise) # Remove noise nodes 
+        
 
         # clean graph 
         #methods = ["stdnode", "dgrnode", "clustersize", "cntcluster"]
@@ -327,8 +338,11 @@ def clean_graphs(dataset):
 
 
 if __name__=="__main__":
-    get_parameters(dataset="./paper_data/dwug_de")
-    #clean_graphs(dataset="./paper_data/dwug_de")
+    #download_paper_datasets()
+    #get_parameters(dataset="./paper_data/dwug_de")
+    download_new_datasets()
+    get_parameters(dataset="./data/dwug_de")
+    clean_graphs(dataset="./data/dwug_de")
 
     
 
