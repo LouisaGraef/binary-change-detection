@@ -3,13 +3,15 @@
 import numpy as np
 import pickle
 from itertools import combinations, product
-from modules import get_node_std, get_clusters, get_low_prob_clusters, get_nan_edges
+from modules import get_node_std, get_clusters, get_low_prob_clusters, get_nan_edges, get_edge_std
 import csv
 import os
 import pandas as pd
 from pathlib import Path
 import dill
 from download_data import download_paper_datasets, download_new_datasets
+import unicodedata
+import networkx as nx
 
 
 
@@ -137,7 +139,7 @@ Clean a graph with specified method.
 """
 def clean_graph(g, method, annotators, parameter):
     
-    g = g.copy()
+    #print(g)
 
     if method=="stdnode":
         g = clean_stdnode(g, annotators, std_nodes=parameter)
@@ -159,14 +161,13 @@ def clean_stdnode(g, annotators, std_nodes):
     # remove nodes with high standard deviation
     std_nodes=float(std_nodes)    
     node2stds = get_node_std(g, annotators, normalization=lambda x: ((x-1)/3.0))
-    #print(node2stds)
-    #node2stds = {n: [x for x in node2stds[n] if np.isfinite(x)] for n in node2stds}
-    #print(node2stds)
-    #nodes_high_stds = [n for n in g.nodes() if not all(np.isnan(node2stds[n])) and len(node2stds[n]) > 1 and np.nanmean(node2stds[n]) > std_nodes]
     nodes_high_stds = [n for n in g.nodes() if np.nanmean(node2stds[n]) > std_nodes]
     #print('Removing {0} nodes with standard deviation above {1}.'.format(len(nodes_high_stds),std_nodes))
     g.remove_nodes_from(nodes_high_stds)    
     g.graph['cleaning_stats'] = g.graph['cleaning_stats'] | {'std_nodes':std_nodes}
+    
+    isolates = list(nx.isolates(g))     
+    g.remove_nodes_from(isolates)
 
     return g
 
@@ -242,24 +243,6 @@ def clean_cntcluster(g, cluster_connect_min):
 
 
 
-"""
-def get_conflicts(dataset):
-    methods = ["dgrnode", "random"]
-    graph = None
-    words = []
-    dfs = []
-    for method in methods:
-        for word in words:
-            for n_nodes in range(len(graph.nodes)):
-                graph_cleaned = clean_graph(graph)
-                # evaluate cleaning (n_nodes, n_clusters, n_conflicts) by counting conflicts
-                cleaning_df = None
-
-    avg_df = np.avg(dfs)
-    plot_stats(avg_df)
-"""
-
-
 
 """
 Clean graphs of one dataset with different methods ("stdnode", "dgrnode", "clustersize", "cntcluster")
@@ -281,6 +264,7 @@ def clean_graphs(dataset):
 
 
     for word in words:
+        word = unicodedata.normalize('NFC', word)
         clusters = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep="\t")
 
         # load graph
@@ -297,7 +281,7 @@ def clean_graphs(dataset):
         nodes_noise = [node for cluster in noise for node in cluster]
         graph.remove_nodes_from(nodes_noise) # Remove noise nodes 
         
-
+        
         # clean graph 
         #methods = ["stdnode", "dgrnode", "clustersize", "cntcluster"]
         methods = ["stdnode", "dgrnode", "clustersize", "cntcluster"]
@@ -307,13 +291,21 @@ def clean_graphs(dataset):
                 g = graph.copy()
                 #print('Input graph: ', g)
                 g.graph['cleaning_stats'] = {}
+
                 g = clean_graph(g, method, annotators, parameter)
+                
                 #print('Cleaned graph: ', g)
 
                 for node in g.nodes:
                     cluster = clusters.loc[clusters['identifier'] == node, 'cluster'].values[0]     # cluster of node 
                     # insert new row to df_cleaning 
-                    df_cleaning.loc[len(df_cleaning)] = [node, cluster, model, method, parameter, word]
+                    new_row = pd.DataFrame({'identifier': [node], 'cluster': [cluster], 'model': [model], 'strategy': [method], 
+                                            'threshold': [parameter], 'lemma': [word]})
+                    df_cleaning = pd.concat([df_cleaning, new_row], ignore_index=True)
+                    #df_cleaning.loc[len(df_cleaning)] = [node, cluster, model, method, parameter, word]
+                #print(df_cleaning)
+                #print(word, method, parameter)
+                #quit()
             print(".")
         counter +=1
         print(counter)
@@ -340,6 +332,7 @@ def clean_graphs(dataset):
 if __name__=="__main__":
     #download_paper_datasets()
     #get_parameters(dataset="./paper_data/dwug_de")
+    #clean_graphs(dataset="./paper_data/dwug_de")
     download_new_datasets()
     get_parameters(dataset="./data/dwug_de")
     clean_graphs(dataset="./data/dwug_de")
