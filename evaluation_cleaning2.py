@@ -11,29 +11,16 @@ from download_data import download_paper_datasets, download_new_datasets
 from cleaning import clean_graphs
 from modules import get_cluster_stats
 import pickle
-
+from cluster_ import get_clusters
+from correlation import Loss
 
 
 """
 Paper: https://openreview.net/pdf?id=BlbrJvKv6L 
 Paper Code: https://github.com/Garrafao/wug_cluster_clean/blob/main/analyze_semeval_de1.ipynb 
+            https://github.com/Garrafao/wug_cluster_clean/blob/main/Nikolay_analyze_semeval_de1.ipynb 
 WUG graph2clean2.py: https://github.com/Garrafao/WUGs/blob/main/scripts/graph2clean2.py 
 """
-
-#download_new_datasets()
-#dataset = './data/dwug_de'                     # new dwug_de and dwug_de_sense versions 
-#dwug_de_sense = './data/dwug_de_sense'
-
-#download_paper_datasets()
-#dataset = './paper_data/dwug_de'                # paper versions of dwug_de and dwug_de_sense
-#dwug_de_sense = './paper_data/dwug_de_sense'
-
-#datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      # all datasets 
-#                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]                               
-#datasets = ["./data/" + dataset for dataset in datasets]
-#dataset = datasets[0]       # ./data/dwug_de
-
-#dataset = './paper_data/dwug_de'                # paper versions of dwug_de and dwug_de_sense
 
 
 
@@ -43,9 +30,18 @@ Evaluate cleaning
 def evaluate_cleaning2(dataset):
 
     df_dwug_de = pd.DataFrame()
-    for p in Path(f'{dataset}/').glob('clusters/opt/*.csv'):    
-        lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','')
-        lemma = unicodedata.normalize('NFC', lemma)
+    
+    if os.path.exists(f'{dataset}/clusters/opt'):
+        clusters_path = Path(f'{dataset}/').glob('clusters/opt/*.csv')
+    else:
+        clusters_path = Path(f'{dataset}/').glob('clusters/*.tsv')
+
+    for p in clusters_path:    
+        lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','').replace('.tsv','')
+        if "dwug_es" in dataset:
+            lemma = unicodedata.normalize('NFD', lemma)
+        else:
+            lemma = unicodedata.normalize('NFC', lemma)
         df = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
         df['lemma'] = lemma
         df_dwug_de = pd.concat([df_dwug_de, df])    
@@ -54,16 +50,21 @@ def evaluate_cleaning2(dataset):
     df_dwug_de_uses = pd.DataFrame()
     for p in Path(f'{dataset}/data').glob('*/uses.csv'):
         df_dwug_de_uses = pd.concat([df_dwug_de_uses, pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)])
-    #display(df_dwug_de_uses)
 
-    df_dwug_de = df_dwug_de.merge(df_dwug_de_uses[['identifier', 'grouping']], how='left',      # columns: ['identifier', 'cluster', 'lemma', 'grouping']
-                                                left_on='identifier', right_on="identifier")
+    #print(df_dwug_de_uses[df_dwug_de_uses['lemma'] == "下海"]['identifier'].value_counts())
+    #print(df_dwug_de[df_dwug_de['lemma'] == "下海"])
+    #print(df_dwug_de)
+    #print(df_dwug_de_uses)
 
+    df_dwug_de = df_dwug_de.merge(df_dwug_de_uses[['identifier', 'lemma', 'grouping']], how='left',      # columns: ['identifier', 'cluster', 'lemma', 'grouping']
+                                                on = ['identifier', 'lemma'])
+    
+    #print(df_dwug_de[df_dwug_de['lemma'] == "下海"])
+    #print(len(df_dwug_de[df_dwug_de['lemma'] == "下海"]))
 
 
 
     # Get some data
-
 
     #df_cleaning = pd.read_pickle("analyze_semeval_de1_df_cleaning.pkl")
     if "paper_data" in dataset:
@@ -72,459 +73,198 @@ def evaluate_cleaning2(dataset):
     else: 
         ds = dataset.replace("./data/", "")
         df_cleaning = pd.read_pickle(f"./cleaning_parameter_grids/{ds}/cleaning_parameter_grid.pkl")
+    #print(df_cleaning)
+
+
+
 
     """
-    print(df_cleaning)
-    quit()
-    df_cleaning = clean_graphs(dataset)
-    print(df_cleaning)
-    quit()
+    https://github.com/Garrafao/WUGs/blob/main/scripts/modules.py
     """
+    def get_cluster_stats2(graph):
+        """
+        Get clusters with conflicting judgments.       
+        :param G: graph
+        :param stats: dictionary with conflicts
+        :param threshold: threshold
+        :return :
+        """
+        try:
+            clusters, _, _ = get_clusters(graph, is_include_noise = True)
+        except KeyError:
+            print('No clusters found.')
+            return {}
+        
+        G_clean = graph.copy()    
+        stats = {}
+        max_error = max(2.5-1, 4-2.5)
+
+        n2i = {node:i for i, node in enumerate(G_clean.nodes())}
+        n2c = {n2i[node]:i for i, cluster in enumerate(clusters) for node in cluster}
+        
+        edges_positive = set([(n2i[i],n2i[j],w-2.5) for (i,j,w) in G_clean.edges.data("weight") if w >= 2.5])
+        edges_negative = set([(n2i[i],n2i[j],w-2.5) for (i,j,w) in G_clean.edges.data("weight") if w < 2.5])
+        valid_edges = len(edges_positive) + len(edges_negative)
+        
+        cluster_state = np.array([n2c[n] for n in sorted(n2c.keys())])
+        loss = Loss('linear_loss', edges_positive=edges_positive, edges_negative=edges_negative).loss(cluster_state)
+
+        stats['loss'] = loss
+        stats['loss_normalized'] = loss/(valid_edges*max_error) if (valid_edges*max_error) != 0.0 else 0.0
+
+        between_conflicts = Loss('binary_loss', edges_positive=edges_positive, edges_negative=edges_negative, signs=['pos']).loss(cluster_state)
+        within_conflicts = Loss('binary_loss', edges_positive=edges_positive, edges_negative=edges_negative, signs=['neg']).loss(cluster_state)
+        stats['conflicts'] = between_conflicts + within_conflicts
+        stats['conflicts_normalized'] = stats['conflicts']/valid_edges if valid_edges != 0.0 else 0.0
+        stats['conflicts_between_clusters'] = between_conflicts
+        stats['conflicts_within_clusters'] = within_conflicts
+
+        edges_min = set([(n2i[i],n2i[j],w) for (i,j,w) in G_clean.edges.data("weight") if w == 1])
+        edges_max = set([(n2i[i],n2i[j],w) for (i,j,w) in G_clean.edges.data("weight") if w == 4])
+        edges_min_no = len(edges_min)
+        edges_max_no = len(edges_max)
+        edges_min_max_no = edges_min_no + edges_max_no
+        loss_min = Loss('binary_loss_poles', edges_min=edges_min, edges_max=edges_max, signs=['min']).loss(cluster_state)
+        loss_max = Loss('binary_loss_poles', edges_min=edges_min, edges_max=edges_max, signs=['max']).loss(cluster_state)
+        win_min = edges_min_no - loss_min
+        win_max = edges_max_no - loss_max
+        win_min_max = win_min + win_max
+        stats['win_min_normalized'] = win_min / edges_min_no if edges_min_no != 0.0 else float('nan') 
+        stats['win_max_normalized'] = win_max / edges_max_no if edges_max_no != 0.0 else float('nan') 
+        stats['win_min_max_normalized'] = win_min_max / edges_min_max_no if edges_min_max_no != 0.0 else float('nan')   
+        
+        return stats
 
 
 
+    """
+    Get eval_method of one lemma.
+    """
+    def get_eval_method(lemma, identifiers, eval_method):
 
-    # Iterate over cleaning models, calculate ARI, other interesting statistics and random baseline model
-
-    gb_model = df_cleaning.groupby('model')    
-    groups_model = gb_model.groups
-    results = []
-    results_random = []
-    #degreeremove_keys = [k for k in groups_model.keys() if "degreeremove" in k]
-    for model in groups_model.keys():                   
-        df_model = gb_model.get_group(model)
-        #if not 'clustersizemin' in model:
-        #    continue
-        #display(df_model).bb   
-        #df_merged = df_model.merge(df_dwug_de_sense, how='outer', left_on=['identifier','lemma'], right_on=['identifier','lemma'])
-        #df_merged = df_merged.merge(df_dwug_de, how='outer', left_on=['identifier','lemma'], right_on=['identifier','lemma'], suffixes=('_clean', '_original'))
-        df_merged = df_model.merge(df_dwug_de, how='outer', left_on=['identifier','lemma'], right_on=['identifier','lemma'], suffixes=('_clean', '_original'))
-        #print(df_merged.columns.tolist())      # ['identifier', 'cluster_clean', 'model', 'strategy', 'threshold', 'lemma', 'cluster_original', 'grouping']
-        gb_lemma = df_merged.groupby('lemma')    
-        groups_merged_lemma = gb_lemma.groups
-        #print(groups_merged_lemma.keys())
-        #assert len(groups_merged_lemma.keys())==50
-
-        for lemma in groups_merged_lemma.keys():
-            
-            df_merged_lemma = gb_lemma.get_group(lemma)
-            strategy = df_merged_lemma['strategy'].tolist()[0]
-            threshold = float(df_merged_lemma['threshold'].tolist()[0])
-            
-            # Calculate various data subsets needed below
-            df_merged_lemma_cluster_original = df_merged_lemma[(~df_merged_lemma['cluster_original'].isnull())]
-            df_merged_lemma_cluster_original_labels = df_merged_lemma[(df_merged_lemma['cluster_original']!=-1) & (~df_merged_lemma['cluster_original'].eq('-1')) & (~df_merged_lemma['cluster_original'].isnull())]
-            df_merged_lemma_cluster_clean_labels = df_merged_lemma[(df_merged_lemma['cluster_clean']!=-1) & (~df_merged_lemma['cluster_clean'].eq('-1')) & (~df_merged_lemma['cluster_clean'].isnull())]
-            #df_merged_lemma_senses = df_merged_lemma[(~df_merged_lemma['label'].isnull())]
-            #df_merged_lemma_senses_labels = df_merged_lemma[(df_merged_lemma['label']!=-1) & (~df_merged_lemma['label'].eq('-1')) & (~df_merged_lemma['label'].isnull())]
-            #df_merged_lemma_senses_labels_cluster_clean_labels = df_merged_lemma_senses_labels[(df_merged_lemma_senses_labels['cluster_clean']!=-1) & (~df_merged_lemma_senses_labels['cluster_clean'].eq('-1')) & (~df_merged_lemma_senses_labels['cluster_clean'].isnull())] 
-
-            #if lemma == 'Ohrwurm':
-            #    print(model, len(df_merged_lemma_cluster_clean_labels))
-
-            if lemma == next(iter(groups_merged_lemma.keys())):     # first element
-                print(model, len(df_merged_lemma_cluster_clean_labels))
-                
-
-            #if len(df_merged_lemma_senses) == 0: # skip lemmas without sense annotations
-            #    continue
-
-            # Calculate various statistics, e.g. number of uses left, number of clusters left, number of senses left after cleaning
-            uses_original_all = len(df_merged_lemma_cluster_original)
-            uses_original = len(df_merged_lemma_cluster_original_labels)
-            uses_cleaned = len(df_merged_lemma_cluster_clean_labels)
-            uses_removed = uses_original_all - uses_cleaned
-            uses_left_percentage = uses_cleaned*100/uses_original_all
-            clusters_original_all = len(df_merged_lemma_cluster_original['cluster_original'].unique())
-            clusters_original = len(df_merged_lemma_cluster_original_labels['cluster_original'].unique())
-            clusters_cleaned = len(df_merged_lemma_cluster_original_labels['cluster_clean'].unique())
-            clusters_removed = clusters_original_all - clusters_cleaned
-            clusters_left_percentage = clusters_cleaned*100/clusters_original_all
-            #senses_original_all = len(df_merged_lemma_senses['label'].unique())
-            #senses_original = len(df_merged_lemma_senses_labels['label'].unique())
-            #senses_cleaned = len(df_merged_lemma_senses_labels_cluster_clean_labels['label'].unique())
-            #senses_removed = senses_original_all - senses_cleaned
-            #senses_left_percentage = senses_cleaned*100/senses_original_all if senses_original_all >0 else np.nan
-            
-            clusters1_original = df_merged_lemma_cluster_original_labels[(df_merged_lemma_cluster_original_labels['grouping']==1)]['cluster_original'].unique().flatten().tolist()
-            clusters2_original = df_merged_lemma_cluster_original_labels[(df_merged_lemma_cluster_original_labels['grouping']==2)]['cluster_original'].unique().flatten().tolist()
-            cluster2change_label_original = {cluster:2 if (cluster in clusters1_original and cluster in clusters2_original) 
-                                            else 1 for cluster in set(clusters1_original+clusters2_original)} 
-            clusters1_clean = df_merged_lemma_cluster_clean_labels[(df_merged_lemma_cluster_clean_labels['grouping']==1)]['cluster_clean'].unique().flatten().tolist()
-            clusters2_clean = df_merged_lemma_cluster_clean_labels[(df_merged_lemma_cluster_clean_labels['grouping']==2)]['cluster_clean'].unique().flatten().tolist()
-            cluster2change_label_clean = {cluster:2 if (cluster in clusters1_clean and cluster in clusters2_clean) 
-                                            else 1 for cluster in set(clusters1_clean+clusters2_clean)} 
-            cluster_changes_left_percentage = len([c for c, l in cluster2change_label_clean.items() 
-                                                if cluster2change_label_original[c]==l])*100/len(cluster2change_label_original)  
-            #senses1_original = df_merged_lemma_senses_labels[(df_merged_lemma_senses_labels['grouping']==1)]['label'].unique().flatten().tolist()
-            #senses2_original = df_merged_lemma_senses_labels[(df_merged_lemma_senses_labels['grouping']==2)]['label'].unique().flatten().tolist()
-            #sense2change_label_original = {cluster:2 if (cluster in senses1_original and cluster in senses2_original) 
-            #                                 else 1 for cluster in set(senses1_original+senses2_original)} 
-            #senses1_clean = df_merged_lemma_senses_labels_cluster_clean_labels[(df_merged_lemma_senses_labels_cluster_clean_labels['grouping']==1)]['label'].unique().flatten().tolist()
-            #senses2_clean = df_merged_lemma_senses_labels_cluster_clean_labels[(df_merged_lemma_senses_labels_cluster_clean_labels['grouping']==2)]['label'].unique().flatten().tolist()
-            #sense2change_label_clean = {cluster:2 if (cluster in senses1_clean and cluster in senses2_clean) 
-            #                                 else 1 for cluster in set(senses1_clean+senses2_clean)} 
-            #sense_changes_left_percentage = len([c for c, l in sense2change_label_clean.items()
-            #                                       if sense2change_label_original[c]==l])*100/len(sense2change_label_original) 
-            
-            # Check for wrongly filtered data subsets
-            assert len(cluster2change_label_original) == len(set(clusters1_original+clusters2_original))
-            #assert len(sense2change_label_clean) == len(set(senses1_clean+senses2_clean))
-            #assert not '-1' in sense2change_label_original and not -1 in sense2change_label_original
-            assert not '-1' in cluster2change_label_original and not -1 in cluster2change_label_original
-            #assert not '-1' in sense2change_label_clean and not -1 in sense2change_label_clean
-            assert not '-1' in cluster2change_label_clean and not -1 in cluster2change_label_clean
-            assert not '-1' in df_merged_lemma_cluster_original_labels['cluster_original'].unique().tolist() and not -1 in df_merged_lemma_cluster_original_labels['cluster_original'].unique()
-            assert not '-1' in df_merged_lemma_cluster_clean_labels['cluster_clean'].unique() and not -1 in df_merged_lemma_cluster_clean_labels['cluster_clean'].unique()
-            #assert not '-1' in df_merged_lemma_senses_labels['label'].unique() and not -1 in df_merged_lemma_senses_labels['label'].unique()
-            #assert not '-1' in df_merged_lemma_senses_labels_cluster_clean_labels['label'].unique() and not -1 in df_merged_lemma_senses_labels_cluster_clean_labels['label'].unique()
-            #assert not '-1' in df_merged_lemma_senses_labels_cluster_clean_labels['cluster_clean'].unique() and not -1 in df_merged_lemma_senses_labels_cluster_clean_labels['cluster_clean'].unique()
-            
-
-            # Calculate number of conflicts
-            # (identifier und cluster sind in df_cleaning gegeben, Kantengewichte aus den menschlichen Annotationen vom Datensatz)
-
+        # load graph
+        if os.path.exists(f'{dataset}/graphs/opt/{lemma}'):
             with open(f'{dataset}/graphs/opt/{lemma}', 'rb') as f:
                 graph = pickle.load(f)
-            graph = graph.copy()
+        else:
+            with open(f'{dataset}/graphs/{lemma}', 'rb') as f:
+                graph = pickle.load(f)
+            # add cluster information to graph
+            clusters_df = pd.read_csv(f'{dataset}/clusters/{lemma}.tsv', sep='\t')
+            #print(clusters_df)
+            identifier2cluster = dict(zip(clusters_df['identifier'], clusters_df['cluster']))
+            for node in graph.nodes():
+                identifier = graph.nodes[node]["identifier"]
+                if identifier in identifier2cluster:
+                    graph.nodes[node]["cluster"] = identifier2cluster[identifier]
+                else:
+                    graph.nodes[node]["cluster"] = None
 
-            
-            # remove nodes that are not in the cleaned graph
-            valid_identifiers = set(df_merged_lemma_cluster_clean_labels['identifier'])     # all node identifiers of the cleaned graph
-            nodes_to_remove = [node for node in graph.nodes() if node not in valid_identifiers]
-            graph.remove_nodes_from(nodes_to_remove)
+        graph = graph.copy()
 
-
-            cleaned_graph_cluster_stats = get_cluster_stats(graph, threshold=2.5, min_val=1, max_val=4)   
-            conflicts = cleaned_graph_cluster_stats['conflicts']
-            conflicts_normalized = cleaned_graph_cluster_stats['conflicts_normalized']
-            conflicts_between_clusters = cleaned_graph_cluster_stats['conflicts_between_clusters']
-            conflicts_within_clusters = cleaned_graph_cluster_stats['conflicts_within_clusters']  
-            win_min_normalized = cleaned_graph_cluster_stats['win_min_normalized']
-            win_max_normalized = cleaned_graph_cluster_stats['win_max_normalized']
-            win_min_max_normalized = cleaned_graph_cluster_stats['win_min_max_normalized']
-            """
-            #data1 = df_merged_lemma_senses_labels_cluster_clean_labels['cluster_clean']
-            #data2 = df_merged_lemma_senses_labels_cluster_clean_labels['label']
-            #ari = adjusted_rand_score(data1, data2) if len(data1)>0 else np.nan  # to do: make sure that np.nan does not improve ARI with low sample numbers because of averaging effects
-            #uses_compared = len(data1) if len(data1)>0 else np.nan # not sure about this
-            #print(' ', lemma, ari, len(data1))
-
-            results.append({'model':model, 'lemma':lemma, 'ARI':ari, 'senses_left_percentage':senses_left_percentage, 
-                            'cluster_changes_left_percentage':cluster_changes_left_percentage,
-                            'sense_changes_left_percentage':sense_changes_left_percentage, 'clusters_left_percentage':clusters_left_percentage, 'uses_left_percentage':uses_left_percentage, 
-                            'clusters_cleaned':clusters_cleaned, 'senses_cleaned':senses_cleaned, 'uses_compared':uses_compared, 'uses_original':uses_original, 
-                            'uses_original_all':uses_original_all, 'uses_cleaned':uses_cleaned, 'uses_removed':uses_removed, 
-                            'strategy':strategy, 'threshold': threshold})
-            """
-            results.append({'model':model, 'lemma':lemma, 'win_min_max_normalized':win_min_max_normalized,
-                            'conflicts': conflicts, 'conflicts_normalized': conflicts_normalized, 
-                            'conflicts_between_clusters': conflicts_between_clusters, 'conflicts_within_clusters': conflicts_within_clusters,
-                            'win_min_normalized': win_min_normalized, 'win_max_normalized': win_max_normalized,
-                            'cluster_changes_left_percentage':cluster_changes_left_percentage,
-                            'clusters_left_percentage':clusters_left_percentage, 'uses_left_percentage':uses_left_percentage, 
-                            'clusters_cleaned':clusters_cleaned, 'uses_original':uses_original, 
-                            'uses_original_all':uses_original_all, 'uses_cleaned':uses_cleaned, 'uses_removed':uses_removed, 
-                            'strategy':strategy, 'threshold': threshold})
-            
-
-
-
-            # Sample random baseline cleaning models
-            #display(df_merged_lemma_cluster_original_labels)
-            df_lemma_random = df_merged_lemma_cluster_original_labels.copy().reset_index(drop=True)
-            indices = (~df_lemma_random['cluster_original'].isnull()) ### has no effect
-            #display(df_lemma_random[indices]['cluster_original'].unique())
-            indices_index = df_lemma_random.index[indices]
-            assert len(indices_index) == len(df_lemma_random)
-            assert not '-1' in df_lemma_random[indices]['cluster_original'].unique().tolist() and not -1 in df_lemma_random[indices]['cluster_original'].unique() and not np.isnan(df_lemma_random[indices]['cluster_original'].unique()).any()
-            for resample in range(15):
-                indices_sampled = np.random.choice(indices_index, size=uses_cleaned, replace=False)     
-                #indices_sampled = np.random.choice(indices_index, size=30, replace=False) # for testing
-                assert len(indices_sampled) == uses_cleaned
-                #print(indices_sampled).lll
-                #df_sample = df_lemma_random.copy().loc[indices_sampled][['identifier', 'cluster_original', 'label', 'lemma']]
-                df_sample = df_lemma_random.copy().loc[indices_sampled][['identifier', 'cluster_original', 'lemma']]
-                # check above
-                df_sample = df_sample.rename(columns={"cluster_original": "cluster_clean"})
-                assert len(df_sample) == uses_cleaned
-
-                #df_sample_senses_labels_cluster_clean_labels = df_sample[(df_sample['label']!=-1) & (~df_sample['label'].eq('-1')) & (~df_sample['label'].isnull())] 
-                #assert not '-1' in df_sample_senses_labels_cluster_clean_labels['label'].unique().tolist() and not -1 in df_sample_senses_labels_cluster_clean_labels['label'].unique()
-                df_sample_senses_labels_cluster_clean_labels = df_sample
-                assert not '-1' in df_sample_senses_labels_cluster_clean_labels['cluster_clean'].unique().tolist() and not -1 in df_sample_senses_labels_cluster_clean_labels['cluster_clean'].unique()
-                
-                
-                
-                # Calculate ARI results    
-                
-                #print(df_sample_senses_labels_cluster_clean_labels.columns.tolist())       # ['identifier', 'cluster_clean', 'lemma']
-
-                with open(f'{dataset}/graphs/opt/{lemma}', 'rb') as f:
-                    graph = pickle.load(f)
-
-                # remove nodes that are not in the cleaned graph
-                valid_identifiers = set(df_sample_senses_labels_cluster_clean_labels['identifier'])     # all node identifiers of the cleaned graph
-                nodes_to_remove = [node for node in graph.nodes() if node not in valid_identifiers]
-                graph.remove_nodes_from(nodes_to_remove)
-
-
-                
-                cleaned_graph_cluster_stats = get_cluster_stats(graph, threshold=2.5, min_val=1, max_val=4)   
-                conflicts = cleaned_graph_cluster_stats['conflicts']
-                conflicts_normalized = cleaned_graph_cluster_stats['conflicts_normalized']
-                conflicts_between_clusters = cleaned_graph_cluster_stats['conflicts_between_clusters']
-                conflicts_within_clusters = cleaned_graph_cluster_stats['conflicts_within_clusters']  
-                win_min_normalized = cleaned_graph_cluster_stats['win_min_normalized']
-                win_max_normalized = cleaned_graph_cluster_stats['win_max_normalized']
-                win_min_max_normalized = cleaned_graph_cluster_stats['win_min_max_normalized']
-                
-                """
-                data1 = df_sample_senses_labels_cluster_clean_labels['cluster_clean']
-                data2 = df_sample_senses_labels_cluster_clean_labels['label']
-                ari = adjusted_rand_score(data1, data2) if len(data1)>0 else np.nan
-                #ari = rand_score(data1, data2) if len(data1)>0 else np.nan # for testing
-                uses_compared = len(data1) if len(data1)>0 else np.nan # not sure about this
-                #print(' ', lemma, ari, len(data1))
-                results_random.append({'model':model, 'lemma':lemma, 'ARI':ari, 'senses_left_percentage':np.nan, 'cluster_changes_left_percentage':np.nan,
-                                'sense_changes_left_percentage':np.nan, 'clusters_left_percentage':np.nan, 'uses_left_percentage':np.nan, 
-                                'clusters_cleaned':np.nan, 'senses_cleaned':np.nan, 'uses_compared':uses_compared, 'uses_original':np.nan, 
-                                'uses_original_all':np.nan, 'uses_cleaned':uses_cleaned, 'uses_removed':np.nan, 
-                                'strategy':strategy, 'threshold': threshold, 'resample': resample}) # to do: calculate missing statistics, may be reuse/generalize code from above
-                """
-                results_random.append({'model':model, 'lemma':lemma, 'win_min_max_normalized':win_min_max_normalized,
-                            'conflicts': conflicts, 'conflicts_normalized': conflicts_normalized, 
-                            'conflicts_between_clusters': conflicts_between_clusters, 'conflicts_within_clusters': conflicts_within_clusters,
-                            'win_min_normalized': win_min_normalized, 'win_max_normalized': win_max_normalized,
-                            'cluster_changes_left_percentage':np.nan, 'sense_changes_left_percentage':np.nan, 
-                            'clusters_left_percentage':np.nan, 'uses_left_percentage':np.nan, 'clusters_cleaned':np.nan, 
-                            'senses_cleaned':np.nan, 'uses_original':np.nan, 'uses_original_all':np.nan, 
-                            'uses_cleaned':uses_cleaned, 'uses_removed':np.nan, 'strategy':strategy, 
-                            'threshold': threshold, 'resample': resample})
-                
-    eval_methods = ['win_min_max_normalized', 'conflicts', 'conflicts_normalized', 'conflicts_between_clusters', 'conflicts_within_clusters',
-                  'win_min_normalized', 'win_max_normalized']            
-    #eval_methods = ['conflicts_normalized', 'win_min_max_normalized']
-    #eval_method = 'conflicts_normalized'
-    for eval_method in eval_methods:
-        df_results_cleaning = pd.DataFrame(results)
-        df_results_cleaning_random = pd.DataFrame(results_random)
-        #df_results.to_pickle("analyze_semeval_de1_df_results.pkl")
-        #display(df_results_cleaning)
-        #print(df_results_cleaning)
-        #print(df_results_cleaning.columns.tolist())
-        #quit()
-        df_results_cleaning_mean = df_results_cleaning.groupby(['model']).agg('mean', numeric_only=True).reset_index().sort_values(by=eval_method, ascending=False)
-        df_results_cleaning_random_mean = df_results_cleaning_random.groupby(['model']).agg('mean', numeric_only=True).reset_index().sort_values(by=eval_method, ascending=False)
-        #display(df_results_cleaning_mean)     
-        df_results_cleaning_std = df_results_cleaning.groupby(['model']).agg('std', numeric_only=True).reset_index().sort_values(by=eval_method, ascending=False)
-        df_results_cleaning_random_std = df_results_cleaning_random.groupby(['model']).agg('std', numeric_only=True).reset_index().sort_values(by=eval_method, ascending=False)
-        df_results_cleaning_mean = df_results_cleaning_mean.merge(df_results_cleaning_std, how='inner', left_on=['model'], right_on=['model'], suffixes=('_mean', '_std'))
-        df_results_cleaning_random_mean = df_results_cleaning_random_mean.merge(df_results_cleaning_random_std, how='inner', left_on=['model'], right_on=['model'], suffixes=('_mean', '_std'))
-        #display(df_results_cleaning_mean)     
-        def extract_strategy(model):
-            return str(model).split('_')[0]
-        df_results_cleaning_mean['strategy'] = df_results_cleaning_mean['model'].apply(lambda x: extract_strategy(x))
-        df_results_cleaning_random_mean['strategy'] = df_results_cleaning_random_mean['model'].apply(lambda x: extract_strategy(x))
-        #print(df_results_cleaning_mean['uses_original_all_mean'].unique())
-        assert len(df_results_cleaning_mean['uses_original_all_mean'].unique()) == 1
-        #assert len(df_results_cleaning_random_mean['uses_original_all_mean'].unique()) == 1
-        print(df_results_cleaning_mean) 
-        print(df_results_cleaning_random_mean)
-        print(df_results_cleaning_mean.columns.tolist()) 
-        print(df_results_cleaning_random_mean.columns.tolist())
-
-
-
-
-
-        gb_strategy = df_results_cleaning_mean.groupby('strategy')    
-        groups_strategy = gb_strategy.groups
-        gb_strategy_random = df_results_cleaning_random_mean.groupby('strategy')
-        groups_strategy_random = gb_strategy_random.groups
-        #results = []
-        #reference_result = df_results_cleaning_mean[(df_results_cleaning_mean['strategy'].eq('degreeremove')) & (df_results_cleaning_mean['threshold_mean'] == 1.0)]   
-        reference_result = df_results_cleaning_mean[(df_results_cleaning_mean['strategy'].eq('dgrnode')) & (df_results_cleaning_mean['threshold_mean'] == 1.0)]   
-        #reference_result = df_results_cleaning_mean.iloc[0:1] # for testing
-        #display(reference_result)
-
-        print("\n")
-        print(reference_result)
-
-        #reference_result_conflicts_normalized = reference_result[eval_method + '_mean'].to_list()[0]
-        reference_result_eval_method = reference_result[eval_method + '_mean'].to_list()[0]
-
-        for strategy in groups_strategy.keys():
-            #print(word)
-            #if strategy == 'collapse':
-            #    continue
-            #if strategy == 'degreeremove':
-            if strategy == 'dgrnode':
-                df_strategy = gb_strategy.get_group(strategy).sort_values(by='threshold_mean', ascending=False)
-                df_strategy_random = gb_strategy_random.get_group(strategy).sort_values(by='threshold_mean', ascending=False)
-            else:
-                df_strategy = gb_strategy.get_group(strategy).sort_values(by='threshold_mean', ascending=True)
-                df_strategy_random = gb_strategy_random.get_group(strategy).sort_values(by='threshold_mean', ascending=True)
-
-            random_baseline_color = 'darkgreen'    
-            print(df_strategy)
-            #plt.figure(figsize=(20, 7))
-            #plt.title(strategy)
-            fig, ax1 = plt.subplots() 
-
-            ax1.set_xlabel('threshold') 
-            ax1.set_ylabel(eval_method + ' (mean)') 
-            #ax1.errorbar(df_strategy['threshold_mean'], df_strategy['ARI_mean'], fmt='-', label=strategy, yerr=df_strategy['ARI_std'], color = 'black')
-            ax1.errorbar(df_strategy['threshold_mean'], df_strategy[eval_method + '_mean'], fmt='-', label=strategy, color = 'black')
-            ax1.errorbar(df_strategy_random['threshold_mean'], df_strategy_random[eval_method + '_mean'], fmt='-', label='random baseline', yerr=df_strategy_random[eval_method + '_std'], color = random_baseline_color)
-            ax1.tick_params(axis ='y') 
-            ax1.set_ylim(0.0,1.02)
-            
-            ax2 = ax1.twinx()   
-            ax2.set_ylabel('% nodes left', color = 'blue') 
-            #ax2.errorbar(df_strategy['threshold_mean'], df_strategy['uses_removed_mean'], fmt='-', yerr=df_strategy['uses_removed_std'], color = 'blue')
-            ax2.errorbar(df_strategy['threshold_mean'], df_strategy['uses_left_percentage_mean'], fmt='-', label='% nodes left', color = 'blue')
-            ax2.tick_params(axis ='y', labelcolor = 'blue') 
-            ax2.set_ylim(0,100)
-            
-            #ax1.axhline(y=reference_result_ari_random, color='darkgray', linestyle='-', label='random')    
-            ax1.axhline(y=reference_result_eval_method, color='gray', linestyle='-', label='no cleaning')    
-            ax1.legend()    
-            #ax2.legend(loc=0)
-            os.makedirs('results', exist_ok=True)
-            plt.savefig('results/{0}-{1}x{2}.png'.format(strategy,'threshold',eval_method + '_mean'))
-            plt.show() 
-            plt.close() 
-            
-            # Plot eval_method versus number of nodes left
-            fig, ax1 = plt.subplots() 
-
-            ax1.set_xlabel('% nodes left') 
-            ax1.set_ylabel(eval_method + " (mean)") 
-            ax1.errorbar(df_strategy['uses_left_percentage_mean'], df_strategy[eval_method + '_mean'], fmt='-', label=strategy, color = 'black')
-            ax1.errorbar(df_strategy_random['uses_left_percentage_mean'], df_strategy_random[eval_method + '_mean'], fmt='-', label='random baseline', yerr=df_strategy_random[eval_method + '_std'], color = random_baseline_color)
-            ax1.tick_params(axis ='y') 
-            ax1.set_ylim(0.0,1.02)
-            ax1.legend()
-            plt.savefig('results/{0}-{1}x{2}.png'.format(strategy,'uses_left_percentage_mean',eval_method + '_mean'))
-            #plt.show() 
-            plt.close() 
-            
-            #print(df_strategy['uses_removed_mean'], df_strategy['ARI_mean'])
+        # remove nodes that are not in the cleaned graph
+        #valid_identifiers = set(df['identifier'])     # all node identifiers of the cleaned graph
+        valid_identifiers = set(identifiers)     # all node identifiers of the cleaned graph
+        nodes_to_remove = [node for node in graph.nodes() if node not in valid_identifiers]
+        graph.remove_nodes_from(nodes_to_remove)
         
-            # Plot conflicts_normalized versus number of clusters left
-            fig, ax1 = plt.subplots() 
+        cleaned_graph_cluster_stats = get_cluster_stats2(graph)   
+        eval_stat = cleaned_graph_cluster_stats[f'{eval_method}']
 
-            ax1.set_xlabel('# clusters left') 
-            ax1.set_ylabel(eval_method + ' (mean)') 
-            ax1.errorbar(df_strategy['clusters_cleaned_mean'], df_strategy[eval_method + '_mean'], fmt='-', label=strategy, color = 'black')
-            ax1.errorbar(df_strategy_random['clusters_cleaned_mean'], df_strategy_random[eval_method + '_mean'], fmt='-', label='random baseline', yerr=df_strategy_random[eval_method + '_std'], color = random_baseline_color)
-            ax1.tick_params(axis ='y') 
-            ax1.set_ylim(0.0,1.02)
-            ax1.legend()
-            plt.savefig('results/{0}-{1}x{2}.png'.format(strategy,'clusters_cleaned_mean',eval_method + '_mean'))
-            plt.show() 
-            plt.close() 
+        return eval_stat
 
 
+
+    def get_perlemma_stats(df, original_stats=None):
+        """
+        Given a dataframe with usages (before or after filtering) calculates per-lemma statistics: number of usages,
+        sense, clusters, ri, ari and their complements (1-ri), (1-ari). 
+        If original_stats is given, it also calculates the absolute and relative changes in these statistics.
+        If there are no uses in df for a particular lemma that is present in original_stats, we the number
+        of usages, senses and clusters are considered being equal to 0 and the quality metrics equal to NaN.
+        This way when calculating the averages across lemmas (outside this function) we will take the removed
+        usages, senses and clusters for these lemmas into account, but not the quality metrics which are not defined
+        for such lemmas.
+        """
+        l2stat = df.groupby('lemma').apply(lambda r: 
+                            pd.DataFrame({
+                                'ntargets':1, 'nuses':len(r), 
+                                'nclusters':r.cluster.nunique(),
+                                #'ari':adjusted_rand_score(r.label, r.cluster), 
+                                f'{eval_method}':get_eval_method(r.name, r.identifier, eval_method), 
+                                #'ri':rand_score(r.label, r.cluster),
+                                #'(1-ari)':1-adjusted_rand_score(r.label, r.cluster), 
+                                f'(1-{eval_method})':1-get_eval_method(r.name, r.identifier, eval_method), 
+                                #'(1-ri)':1-rand_score(r.label, r.cluster),
+                            }, index=[0])).droplevel(level=1)
+        if original_stats is not None:
+            # restore words from original_stats that are absent in l2stat (all uses removed)
+            l2stat = l2stat + original_stats * 0 
+            zero_cols = ['ntargets','nuses','nclusters']
+            # replace NaNs with 0 in zero_cols, but metrics should be undefined not to affect the average
+            l2stat.loc[l2stat['nuses'].isnull(), zero_cols] = 0
+            # calculate the absolute and the relative differences, when the original value of some metric is 0
+            # and the absolute difference is 0 we define the relative difference as 0 (this helps when the original
+            # (1-ari) or (1-ri) is 0, i.e. the original clustering is already perfect, since it cannot get worse after
+            # removing nodes).
+            l2stat_diff = (l2stat - original_stats)
+            l2stat_reldiff = l2stat_diff.where(l2stat_diff==0.0, l2stat_diff / original_stats)
+            """if l2stat_diff > 0:
+                print(f"diff: {l2stat_diff}")
+                print(f"reldiff: {l2stat_reldiff}")
+                print(f"original stats: {original_stats}")
+                print(f"new stats: {l2stat}")
+                quit()"""
+            l2stat_diff.rename(columns={c:f'Δ{c}' for c in l2stat_diff.columns if c!='lemma'}, inplace=True)
+            l2stat_reldiff.rename(columns={c:f'Δ{c}/{c}' for c in l2stat_reldiff.columns if c!='lemma'}, inplace=True)
+            # return a wide dataframe with the metrics, their absolute and relative changes
+            l2stat = pd.concat([l2stat, l2stat_diff, l2stat_reldiff], axis=1)
+        return l2stat
+
+
+
+
+
+    eval_methods = ['win_min_max_normalized', 'conflicts', 'conflicts_normalized', 'conflicts_between_clusters', 'conflicts_within_clusters',
+                  'win_min_normalized', 'win_max_normalized']      
+    for eval_method in eval_methods:
 
         df = df_dwug_de.query("cluster!=-1")
-        #print(df)       # columns: ['identifier', 'cluster', 'lemma', 'grouping']
+        #df = df_dwug_de
+        print(df[df['lemma'] == "下海"])       # columns: ['identifier', 'cluster', 'lemma', 'grouping']        # 39
+        print(len(df[df['lemma'] == "下海"]))       # columns: ['identifier', 'cluster', 'lemma', 'grouping']       # 39
 
 
-        """
-        Get eval_method of one lemma.
-        """
-        def get_eval_method(lemma, identifiers, eval_method):
-            with open(f'{dataset}/graphs/opt/{lemma}', 'rb') as f:
-                    graph = pickle.load(f)
-            graph = graph.copy()
-
-            # remove nodes that are not in the cleaned graph
-            #valid_identifiers = set(df['identifier'])     # all node identifiers of the cleaned graph
-            valid_identifiers = set(identifiers)     # all node identifiers of the cleaned graph
-            nodes_to_remove = [node for node in graph.nodes() if node not in valid_identifiers]
-            graph.remove_nodes_from(nodes_to_remove)
-            
-            cleaned_graph_cluster_stats = get_cluster_stats(graph, threshold=2.5, min_val=1, max_val=4)   
-
-
-            conflicts = cleaned_graph_cluster_stats['conflicts']
-            conflicts_normalized = cleaned_graph_cluster_stats['conflicts_normalized']
-            conflicts_between_clusters = cleaned_graph_cluster_stats['conflicts_between_clusters']
-            conflicts_within_clusters = cleaned_graph_cluster_stats['conflicts_within_clusters']  
-            win_min_normalized = cleaned_graph_cluster_stats['win_min_normalized']
-            win_max_normalized = cleaned_graph_cluster_stats['win_max_normalized']
-            win_min_max_normalized = cleaned_graph_cluster_stats['win_min_max_normalized']
-
-            eval_stat = cleaned_graph_cluster_stats[f'{eval_method}']
-
-            return eval_stat
-
-
-
-        def get_perlemma_stats(df, original_stats=None):
-            """
-            Given a dataframe with usages (before or after filtering) calculates per-lemma statistics: number of usages,
-            sense, clusters, ri, ari and their complements (1-ri), (1-ari). 
-            If original_stats is given, it also calculates the absolute and relative changes in these statistics.
-            If there are no uses in df for a particular lemma that is present in original_stats, we the number
-            of usages, senses and clusters are considered being equal to 0 and the quality metrics equal to NaN.
-            This way when calculating the averages across lemmas (outside this function) we will take the removed
-            usages, senses and clusters for these lemmas into account, but not the quality metrics which are not defined
-            for such lemmas.
-            """
-            l2stat = df.groupby('lemma').apply(lambda r: 
-                                pd.DataFrame({
-                                    'ntargets':1, 'nuses':len(r), 
-                                    'nclusters':r.cluster.nunique(),
-                                    #'ari':adjusted_rand_score(r.label, r.cluster), 
-                                    f'{eval_method}':get_eval_method(r.name, r.identifier, eval_method), 
-                                    #'ri':rand_score(r.label, r.cluster),
-                                    #'(1-ari)':1-adjusted_rand_score(r.label, r.cluster), 
-                                    f'(1-{eval_method})':1-get_eval_method(r.name, r.identifier, eval_method), 
-                                    #'(1-ri)':1-rand_score(r.label, r.cluster),
-                                }, index=[0])).droplevel(level=1)
-            if original_stats is not None:
-                # restore words from original_stats that are absent in l2stat (all uses removed)
-                l2stat = l2stat + original_stats * 0 
-                zero_cols = ['ntargets','nuses','nclusters']
-                # replace NaNs with 0 in zero_cols, but metrics should be undefined not to affect the average
-                l2stat.loc[l2stat['nuses'].isnull(), zero_cols] = 0
-                # calculate the absolute and the relative differences, when the original value of some metric is 0
-                # and the absolute difference is 0 we define the relative difference as 0 (this helps when the original
-                # (1-ari) or (1-ri) is 0, i.e. the original clustering is already perfect, since it cannot get worse after
-                # removing nodes).
-                l2stat_diff = (l2stat - original_stats)
-                l2stat_reldiff = l2stat_diff.where(l2stat_diff==0.0, l2stat_diff / original_stats)
-                l2stat_diff.rename(columns={c:f'Δ{c}' for c in l2stat_diff.columns if c!='lemma'}, inplace=True)
-                l2stat_reldiff.rename(columns={c:f'Δ{c}/{c}' for c in l2stat_reldiff.columns if c!='lemma'}, inplace=True)
-                # return a wide dataframe with the metrics, their absolute and relative changes
-                l2stat = pd.concat([l2stat, l2stat_diff, l2stat_reldiff], axis=1)
-            return l2stat
-
-
-        # df: before cleaning, cluster != -1
+        # df: before cleaning
         original_stats = get_perlemma_stats(df)  # columns: ('lemma'), ['ntargets', 'nuses', 'nclusters', 'conflicts_normalized', '(1-conflicts_normalized)']
         print(original_stats)
-        print(original_stats.columns.tolist())
+        print(original_stats.columns.tolist())          # ['ntargets', 'nuses', 'nclusters', 'win_min_max_normalized', '(1-win_min_max_normalized)']
         # df_cleaning.strategy.value_counts()
         # print(df_cleaning.query('strategy=="dgrnode"').model.value_counts())
-        dfm = df.drop(columns='cluster').merge(df_cleaning[['identifier','cluster','model','strategy']], 
-                                        on=['identifier'], how='inner')
+        if "chiwug" in dataset:
+            dfm = df.merge(df_cleaning[['identifier','cluster','model','strategy']],                       
+                                            on=['identifier', 'cluster'], how='inner').drop_duplicates(subset=['identifier', 'lemma', 'model'])
+        else:
+            dfm = df.drop(columns='cluster').merge(df_cleaning[['identifier','cluster','model','strategy']],    
+                                            on=['identifier'], how='inner')
         print(dfm)                                  # columns: ['identifier', 'label', 'lemma', 'grouping', 'cluster', 'model', 'strategy']
 
+        print(dfm[(dfm["lemma"] == "下海") & (dfm["model"] == "stdnode_0.08226495726495725")].sort_values(by="identifier"))
+        print(len(dfm[(dfm["lemma"] == "下海") & (dfm["model"] == "stdnode_0.08226495726495725")].sort_values(by="identifier")))    # 25
+
         pdf = dfm.groupby(['model','strategy']).apply(lambda x: get_perlemma_stats(x, original_stats)).reset_index()
+        #pd.set_option("display.max_columns", None)  
+        #pd.set_option("display.expand_frame_repr", False)  
+        #print(pdf[pdf["lemma"] == "下海"])      # nuses max 40 
+        #print(len(pdf[pdf["lemma"] == "下海"]))
         # print(len(pdf))     # 3168
         # print(pdf.columns.tolist())     
-        # pd.set_option('display.max_rows', None)  # Alle Zeilen anzeigen
+        # pd.set_option('display.max_rows', None) 
         # print(pdf.loc[pdf['strategy'] == 'cntcluster', ['model', 'Δnuses/nuses', 'Δ(1-conflicts_normalized)/(1-conflicts_normalized)']].sort_values(by='Δnuses/nuses'))
         
-
         # ['model', 'strategy', 'lemma', 'ntargets', 'nuses', 'nsenses', 'nclusters', 'ari', 'ri', '(1-ari)', '(1-ri)', 
         # 'Δntargets', 'Δnuses', 'Δnsenses', 'Δnclusters', 'Δari', 'Δri', 'Δ(1-ari)', 'Δ(1-ri)', 'Δntargets/ntargets', 'Δnuses/nuses', 
         # 'Δnsenses/nsenses', 'Δnclusters/nclusters', 'Δari/ari', 'Δri/ri', 'Δ(1-ari)/(1-ari)', 'Δ(1-ri)/(1-ri)']
-
 
         # pdf[pdf.isnull().any(axis=1)]     # shows rows with nuses = 0.0 (193 rows)
         # if the number of uses for a lemma is 0 after filtering, the metrics are undefined (NaNs); 
@@ -546,7 +286,6 @@ def evaluate_cleaning2(dataset):
                 for frac in np.linspace(0.1,1.0,num=10) for j in range(100)], ignore_index=True)
         # print(pdf.columns.tolist())
         # print(pdf[['model', 'conflicts_normalized', '(1-conflicts_normalized)']])
-
         # same columns
 
 
@@ -560,24 +299,12 @@ def evaluate_cleaning2(dataset):
         sns.set_context('talk')
 
         #strategy_order = ['stdnode','degreeremove','clustersizemin','clusterconnectmin','random']
-        #strategy_order = ['stdnode','degreeremove','clustersizemin','clusterconnectmin','random']
-        strategy_order = ['stdnode','dgrnode','clustersize','cntcluster','random']
         strategy_order = ['stdnode','dgrnode','clustersize','cntcluster','random']
         # plotdf = pdf[pdf.strategy.isin(strategy_order)]
         plotdf = pdf
 
 
-
         # Individual plots for each lemma
-        """
-        method2papername = {
-            'stdnode':'stdnode',
-            'degreeremove':'dgrnode',
-            'clustersizemin':'sizecluster',
-            'clusterconnectmin':'cntcluster',
-            'random':'random',
-        }
-        """
         method2papername = {
             'stdnode':'stdnode',
             'dgrnode':'dgrnode',
@@ -604,6 +331,7 @@ def evaluate_cleaning2(dataset):
 
 
 
+
         # Average across lemmas
 
         # 'abgebrüht','zersetzen' are ideally clustered right from the start, removing nodes cannot change anything
@@ -623,26 +351,6 @@ def evaluate_cleaning2(dataset):
         mpdf
 
 
-        """
-        # Collapse plots 
-
-        pdf['thres'] = pdf.model.str.split('_').str[-1].astype(float)
-        mpdf['thres'] = mpdf.index.str.split('_').str[-1].astype(float)
-        argmax_thres = mpdf.loc[mpdf[mpdf.strategy=='collapse'].ari.idxmax()].thres
-        print(argmax_thres)
-        with sns.plotting_context('poster'):
-            g = sns.relplot(data=pdf.query('strategy=="collapse"'), x='thres',y='ari',col='lemma',col_wrap=6,
-                        kind='line')
-            for ax in g.axes:
-                ax.axvline(argmax_thres)
-            g.savefig('collapsing_individual_ari.pdf')
-
-        g = sns.relplot(data=mpdf.query('strategy=="collapse"'), x='thres',y='ari', kind='line')
-        g.set(ylim=(0.0,0.8))
-        g.axes[0,0].axvline(argmax_thres)
-        g.savefig('collapsing_avg_ari.pdf')
-        """
-
 
         # clustering quality metrics averaged across survived target words 
 
@@ -651,11 +359,6 @@ def evaluate_cleaning2(dataset):
                         x=x, y=y, hue='strategy',style='strategy',
                         hue_order=strategy_order, style_order=strategy_order,
                         markers=True, kind='line', errorbar=('ci',95), legend=legend, aspect=aspect)
-        #     sns.scatterplot(data=mpdf[mpdf.strategy.isin(strategy_order[:-1])], 
-        #                     size='size',
-        #                 x=x, y=y, hue='strategy',style='strategy',
-        #                 hue_order=strategy_order, style_order=strategy_order,
-        #                 legend=False)  
             if legend:
                 for t in g.legend.texts:
                     t.set_text(method2papername[t.get_text()])
@@ -692,5 +395,5 @@ def evaluate_cleaning2(dataset):
 
 
 if __name__=="__main__":
-    dataset = './data/refwug'
+    dataset = './data/discowug'
     evaluate_cleaning2(dataset)

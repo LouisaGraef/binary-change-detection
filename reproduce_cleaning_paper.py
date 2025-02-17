@@ -1,8 +1,9 @@
 
 from download_data import download_paper_datasets, download_new_datasets
-from cleaning import clean_graph, evaluate_clean_graph, get_conflicts, get_parameters, clean_graphs
+from cleaning import clean_graph, get_parameters, clean_graphs
 from evaluation_cleaning import evaluate_cleaning
 from evaluation_cleaning2 import evaluate_cleaning2
+import subprocess
 
 
 # Paper: https://openreview.net/pdf?id=BlbrJvKv6L 
@@ -13,50 +14,43 @@ from evaluation_cleaning2 import evaluate_cleaning2
 
 
 if __name__=="__main__":
-    
+    """
     # Download data
     download_paper_datasets()             # dwug_de 2.3.0
     download_new_datasets()               # dwug_de 3.0.0
 
+    
+    # Evaluate with ARI
 
     # Paper dataset versions
-    # Get parameters for different cleaning methods 
     dataset = "./paper_data/dwug_de"
     dwug_de_sense = "./paper_data/dwug_de_sense"
-    get_parameters(dataset)     # saves parameters
-    clean_graphs(dataset)        # saves parameter grid 
-
-    # Evaluate cleaning
-    evaluate_cleaning(dataset, dwug_de_sense)        # dwug_de 2.3.0
-
+    get_parameters(dataset)                         # get parameters
+    clean_graphs(dataset)                           # get parameter grid 
+    evaluate_cleaning(dataset, dwug_de_sense)       # Evaluate cleaning
 
     # New dataset versions
-    # Get parameters for different cleaning methods 
     dataset = "./data/dwug_de"
     dwug_de_sense = "./data/dwug_de_sense"
-    get_parameters(dataset)     # saves parameters
-    clean_graphs(dataset)        # saves parameter grid 
-
-    # Evaluate cleaning
-    evaluate_cleaning(dataset, dwug_de_sense)        # dwug_de 3.0.0
+    get_parameters(dataset)                         # get parameters
+    clean_graphs(dataset)                           # get parameter grid 
+    evaluate_cleaning(dataset, dwug_de_sense)       # Evaluate cleaning
 
 
 
 
-    # evaluate all datasets by using conflicts in clusterings (for different numbers of deleted nodes) 
-    # (to validate if conflicts method is good for evaluation of cleaning (bc for other datasets we don't have gold for cleaning -> no ARI)
-    # -> should produce similar results (that dgrnode is better than the random baseline, similar graphics))
+
+    # Evaluate with normalized conflicts in clusterings (for different numbers of deleted nodes) (no gold for datasets -> no ARI)
 
 
-    # evaluate cleaning for all datasets with conflicts method 
-    datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      # all datasets 
+    datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]                               
     datasets = ["./data/" + dataset for dataset in datasets]
 
     
     dataset = "./paper_data/dwug_de"
     evaluate_cleaning2(dataset)
-
+    
     dataset = "./data/dwug_de"
     evaluate_cleaning2(dataset)
 
@@ -69,15 +63,15 @@ if __name__=="__main__":
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
-
+    
     dataset = "./data/dwug_en"
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
 
     dataset = "./data/dwug_sv"
-    get_parameters(dataset)
-    clean_graphs(dataset)
+    #get_parameters(dataset)
+    #clean_graphs(dataset)
     evaluate_cleaning2(dataset)
 
     dataset = "./data/dwug_la"
@@ -89,19 +83,25 @@ if __name__=="__main__":
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
+    """
 
+    """
     dataset = "./data/chiwug"
-    get_parameters(dataset)
-    clean_graphs(dataset)
-    evaluate_cleaning2(dataset)
+    #get_parameters(dataset)
+    #clean_graphs(dataset)
+    #evaluate_cleaning2(dataset)
 
-    dataset = "nor_dia_change-main/subset1"
+    dataset = "./data/nor_dia_change-main/subset1"
+    subprocess.run(['bash', './wug_data2graph_pipeline.sh', dataset])       # get graph with uses and judgments 
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
+    """
 
-    dataset = "nor_dia_change-main/subset2"
+    dataset = "./data/nor_dia_change-main/subset2"
+    subprocess.run(['bash', './wug_data2graph_pipeline.sh', dataset])       # get graph with uses and judgments 
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
+    quit()
 

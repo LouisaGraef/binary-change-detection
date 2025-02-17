@@ -11,6 +11,7 @@ paper_edge_preds/
 parameter_grids/
 stats_2/
 data2*
+graph2*
 *.pkl
 data*
 wug_cluster_clean_data*

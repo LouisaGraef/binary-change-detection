@@ -64,10 +64,13 @@ mv WUGs/scripts/data2agr2.sh ./data2agr2.sh
 mv WUGs/scripts/data2agr2.py ./data2agr2.py
 mv WUGs/scripts/data2graph.sh ./data2graph.sh
 mv WUGs/scripts/data2graph.py ./data2graph.py
+mv WUGs/scripts/graph2cluster2.sh ./graph2cluster2.sh
+mv WUGs/scripts/graph2cluster2.py ./graph2cluster2.py
 mv WUGs/scripts/modules.py ./modules.py
 mv WUGs/scripts/constellation.py ./constellation.py
 mv WUGs/scripts/correlation.py ./correlation.py
 mv WUGs/scripts/krippendorff_.py ./krippendorff_.py
+mv WUGs/scripts/clustering_interface.py ./clustering_interface.py
 chmod 755 ./*.sh
 
 mv WUGs/scripts/clustering_interface_wsbm.py ./clustering_interface_wsbm.py

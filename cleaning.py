@@ -44,8 +44,23 @@ def get_parameters(dataset):
     for word in words:      # words for which a graph exists
 
         # load graph
-        with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
-            g = pickle.load(f)
+        if os.path.exists(f'{dataset}/graphs/opt/{word}'):
+            with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
+                g = pickle.load(f)
+        else:
+            with open(f'{dataset}/graphs/{word}', 'rb') as f:
+                g = pickle.load(f)
+            # add cluster information to graph
+            clusters_df = pd.read_csv(f'{dataset}/clusters/{word}.tsv', sep='\t')
+            #print(clusters_df)
+            identifier2cluster = dict(zip(clusters_df['identifier'], clusters_df['cluster']))
+            for node in g.nodes():
+                identifier = g.nodes[node]["identifier"]
+                if identifier in identifier2cluster:
+                    g.nodes[node]["cluster"] = identifier2cluster[identifier]
+                else:
+                    g.nodes[node]["cluster"] = None
+
 
         # remove nan edges and noise
         nan_edges = get_nan_edges(g)    
@@ -264,12 +279,39 @@ def clean_graphs(dataset):
 
 
     for word in words:
-        word = unicodedata.normalize('NFC', word)
-        clusters = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep="\t")
+        #print(repr(word))
+        if "dwug_es" in dataset:
+            word = unicodedata.normalize('NFD', word)
+        else:
+            word = unicodedata.normalize('NFC', word)
+        #print(repr(word))
+        #if "dwug_es" in dataset:
+        #    word = word.normalize('NFKD')
+        if os.path.exists(f'{dataset}/clusters/opt/{word}.csv'):
+            clusters = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep="\t")
+        else:
+            clusters = pd.read_csv(f'{dataset}/clusters/{word}.tsv', sep="\t")
+        
 
         # load graph
-        with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
-            graph = pickle.load(f)
+        if os.path.exists(f'{dataset}/graphs/opt/{word}'):
+            with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
+                graph = pickle.load(f)
+        else:
+            with open(f'{dataset}/graphs/{word}', 'rb') as f:
+                graph = pickle.load(f)
+            # add cluster information to graph
+            clusters_df = pd.read_csv(f'{dataset}/clusters/{word}.tsv', sep='\t')
+            #print(clusters_df)
+            identifier2cluster = dict(zip(clusters_df['identifier'], clusters_df['cluster']))
+            for node in graph.nodes():
+                identifier = graph.nodes[node]["identifier"]
+                if identifier in identifier2cluster:
+                    graph.nodes[node]["cluster"] = identifier2cluster[identifier]
+                else:
+                    graph.nodes[node]["cluster"] = None
+
+
         with open(f'{dataset}/annotators.csv', encoding='utf-8') as csvfile: 
             reader = csv.DictReader(csvfile, delimiter='\t',quoting=csv.QUOTE_NONE,strict=True)
             annotators = [row['annotator'] for row in reader]
@@ -279,7 +321,13 @@ def clean_graphs(dataset):
         graph.remove_edges_from(nan_edges)
         noise, _, _ = get_clusters(graph, is_include_noise = True, is_include_main = False)
         nodes_noise = [node for cluster in noise for node in cluster]
+        #print(graph)
         graph.remove_nodes_from(nodes_noise) # Remove noise nodes 
+        #print(graph)
+        #print(graph.nodes)
+        #for node in graph.nodes():
+        #    cluster = graph.nodes[node].get('cluster')
+        #    print(f'Node: {node}, Cluster: {cluster}')
         
         
         # clean graph 
@@ -297,7 +345,10 @@ def clean_graphs(dataset):
                 #print('Cleaned graph: ', g)
 
                 for node in g.nodes:
-                    cluster = clusters.loc[clusters['identifier'] == node, 'cluster'].values[0]     # cluster of node 
+                    try:
+                        cluster = clusters.loc[clusters['identifier'] == node, 'cluster'].values[0]     # cluster of node 
+                    except (IndexError):    # node with no cluster assignment
+                        continue
                     # insert new row to df_cleaning 
                     new_row = pd.DataFrame({'identifier': [node], 'cluster': [cluster], 'model': [model], 'strategy': [method], 
                                             'threshold': [parameter], 'lemma': [word]})
@@ -333,9 +384,9 @@ if __name__=="__main__":
     #download_paper_datasets()
     #get_parameters(dataset="./paper_data/dwug_de")
     #clean_graphs(dataset="./paper_data/dwug_de")
-    download_new_datasets()
-    get_parameters(dataset="./data/dwug_de")
-    clean_graphs(dataset="./data/dwug_de")
+    #download_new_datasets()
+    get_parameters(dataset="./data/dwug_es")
+    clean_graphs(dataset="./data/dwug_es")
 
     
 
