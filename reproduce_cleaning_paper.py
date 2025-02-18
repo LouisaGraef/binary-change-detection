@@ -14,7 +14,7 @@ import subprocess
 
 
 if __name__=="__main__":
-    """
+    
     # Download data
     download_paper_datasets()             # dwug_de 2.3.0
     download_new_datasets()               # dwug_de 3.0.0
@@ -83,25 +83,21 @@ if __name__=="__main__":
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
-    """
 
-    """
     dataset = "./data/chiwug"
-    #get_parameters(dataset)
-    #clean_graphs(dataset)
-    #evaluate_cleaning2(dataset)
+    get_parameters(dataset)
+    clean_graphs(dataset)
+    evaluate_cleaning2(dataset)
 
     dataset = "./data/nor_dia_change-main/subset1"
     subprocess.run(['bash', './wug_data2graph_pipeline.sh', dataset])       # get graph with uses and judgments 
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
-    """
 
     dataset = "./data/nor_dia_change-main/subset2"
     subprocess.run(['bash', './wug_data2graph_pipeline.sh', dataset])       # get graph with uses and judgments 
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
-    quit()
 
