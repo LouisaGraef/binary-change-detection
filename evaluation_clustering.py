@@ -3,7 +3,6 @@ import csv
 import matplotlib
 #matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import numpy as np
 from pathlib import Path
 import os
 from itertools import combinations, chain
@@ -17,6 +16,20 @@ from sklearn.metrics.cluster import adjusted_rand_score, rand_score
 from scipy.stats import spearmanr
 import requests
 
+# Cross validation
+from sklearn.model_selection import cross_validate
+from sklearn.base import BaseEstimator
+from sklearn.utils.validation import check_X_y
+from sklearn.utils.estimator_checks import check_estimator
+
+import numpy as np
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.utils.validation import check_X_y, check_array, check_is_fitted
+from sklearn.utils.multiclass import unique_labels
+from sklearn.metrics import euclidean_distances
+from collections import Counter
+import ast
+
 
 """
 Paper: https://openreview.net/pdf?id=BlbrJvKv6L 
@@ -26,15 +39,10 @@ Paper Code: https://github.com/Garrafao/wug_cluster_clean/blob/main/analyze_seme
 
 
 
-def evaluate_clustering(dataset, clustering_method="k-means"):
+def evaluate_clustering(dataset):
 
     
-    print(f'\nDataset: {dataset}  \nClustering Method: {clustering_method}')
-
-    if "paper_data" in dataset:
-        ds = dataset.replace("./paper_data/", "")
-    else:
-        ds = dataset.replace("./data/", "")
+    print(f'\nDataset: {dataset}\n')
 
 
 
@@ -51,65 +59,214 @@ def evaluate_clustering(dataset, clustering_method="k-means"):
     df_dwug_de_uses = pd.DataFrame()
     for p in Path(f'{dataset}/data').glob('*/uses.csv'):
         df_dwug_de_uses = pd.concat([df_dwug_de_uses, pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)])
-    #display(df_dwug_de_uses)
 
 
-    df_dwug_de = df_dwug_de.merge(df_dwug_de_uses[['identifier', 'lemma', 'grouping']], how='left',      # columns: ['identifier', 'cluster', 'lemma', 'grouping']
+    df_dwug_de = df_dwug_de.merge(df_dwug_de_uses[['identifier', 'lemma', 'grouping']], how='left',      
                                                 on = ['identifier', 'lemma'])
+    # columns: ['identifier', 'cluster', 'lemma', 'grouping']
     
-    print(df_dwug_de)
+    print(f'df_dwug_de: \n{df_dwug_de}\n')
 
 
 
 
-    # load Clustering Parameter Grid 
-    clustering_parameter_grid = pd.read_csv(f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv", sep='\t')
-    print(clustering_parameter_grid)
-    print(clustering_parameter_grid.columns.tolist())
+    # load Clustering Parameter Grid, Add columns to clustering_parameter_grid: model, method, ARI, GC_Spearmanr, BC_F1
+    ds = dataset.replace("./data/", "")
 
 
+    clustering_parameter_grid = pd.DataFrame()
+    for p in Path(f'./parameter_grids/{ds}/').glob('*/parameter_grid.tsv'):
+        method = os.path.basename(os.path.dirname(p))
+        if method == "correlation_paper":
+            continue
+        df = pd.read_csv(p, delimiter='\t')
+        df['method'] = method
+        df['model'] = (f'{method}_{ds}_' + df['parameter_combination'].astype(str))
+        df['clustering_pred'] = df['clustering_pred'].apply(ast.literal_eval)        # string to dictionary
+        df['clustering_gold'] = df['clustering_gold'].apply(ast.literal_eval)        # string to dictionary
 
-    # Add columns to clustering_parameter_grid: model, method, ARI
-    model = f'{clustering_method}_{ds}_'
-    if "paper_data" in dataset:
-        ds = "paper_data/" + ds
-    clustering_parameter_grid['model'] = (f'{clustering_method}_{ds}_' + clustering_parameter_grid['parameter_combination'])
-    clustering_parameter_grid['method'] = (f'{clustering_method}')
-    #clustering_parameter_grid['ARI'] = adjusted_rand_score()
+        ari_values = []
+        spearmanr_values = []
+        for index, row in df.iterrows():
+            # evaluate clustering
+            pred_clusters = row['clustering_pred']
+            gold_clusters = row['clustering_gold']
+            pred_labels = [pred_clusters[node] for node in sorted(pred_clusters)]
+            gold_labels = [gold_clusters[node] for node in sorted(gold_clusters)]
+            ari = adjusted_rand_score(gold_labels, pred_labels)
+            ari_values.append(ari)
+            
 
-    ari_values = []
-    spearmanr_values = []
-    for index, row in clustering_parameter_grid.iterrows():
-        # evaluate clustering
-        pred_clusters = eval(row['clustering_pred'])
-        gold_clusters = eval(row['clustering_gold'])
-        pred_labels = [pred_clusters[node] for node in sorted(pred_clusters)]
-        gold_labels = [gold_clusters[node] for node in sorted(gold_clusters)]
-        ari = adjusted_rand_score(gold_labels, pred_labels)
-        ari_values.append(ari)
-        
         # evaluate Graded Change
-        spearman, p_value = spearmanr(row['GC_pred'], row['GC_gold'])
-        spearmanr_values.append(spearman)
+        spearman, p_value = spearmanr(df['GC_pred'], df['GC_gold'])
 
-    # evaluate Binary Change
-    f1 = f1_score(clustering_parameter_grid['BC_gold'], clustering_parameter_grid['BC_pred'])
+        # evaluate Binary Change
+        f1 = f1_score(df['BC_gold'], df['BC_pred'])
 
-
-    # Add columns and reorder 
-    clustering_parameter_grid['ARI'] = ari_values
-    clustering_parameter_grid['GC_Spearmanr'] = spearmanr_values
-    clustering_parameter_grid['BC_F1'] = f1
-    clustering_parameter_grid = clustering_parameter_grid[['model', 'word', 'ARI', 'GC_Spearmanr', 'BC_F1', 'BC_pred', 'BC_gold', 'GC_pred', 
-                                                           'GC_gold', 'method','parameter_combination', 'clustering_pred', 'clustering_gold']]
-
-    print(clustering_parameter_grid)
-    print(clustering_parameter_grid.columns.tolist())
+        # Add columns and reorder 
+        df['ARI'] = ari_values
+        df['GC_Spearmanr'] = spearman
+        df['BC_F1'] = f1
+        df['cluster_no'] = df['clustering_pred'].apply(lambda x: len(set(x.values())))             # number of clusters (predicted)
+        df = df[['model', 'word', 'ARI', 'GC_Spearmanr', 'BC_F1', 'cluster_no', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 
+                 'method','parameter_combination', 'clustering_pred', 'clustering_gold']]
+        clustering_parameter_grid = pd.concat([clustering_parameter_grid, df], ignore_index=True)
 
 
+    
+    print('\ndf_results: ')
+    df_results = clustering_parameter_grid
+    print(df_results)
+    print(df_results.columns.tolist())
+    
+    # ['model', 'word', 'ARI', 'GC_Spearmanr', 'BC_F1', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 
+    # 'method', 'parameter_combination', 'clustering_pred', 'clustering_gold']
+    print('\nSorted by ARI: ')
+    print(df_results.groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='ARI', ascending=False))
+    print('\nSorted by GC_Spearmanr: ')
+    print(df_results.groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='GC_Spearmanr', ascending=False))
+    print('\nSorted by BC_F1: ')
+    print(df_results.groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='BC_F1', ascending=False))
+    print('\nMethod = correlation')
+    print(df_results[df_results['method'].eq('correlation')].groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='ARI', ascending=False))
+    #quit()
 
 
 
+
+
+
+
+
+
+
+
+
+
+    class TemplateClassifier(BaseEstimator, ClassifierMixin):
+        def __init__(self, demo_param='demo'):
+            self.demo_param = demo_param
+        def fit(self, X, y):
+            # Check that X and y have correct shape
+            X, y = check_X_y(X, y)
+            # Store the classes seen during fit
+            self.classes_ = unique_labels(y)
+            self.X_ = X
+            self.y_ = y
+            # Return the classifier
+            return self
+        def predict(self, X):
+            # Check if fit has been called
+            check_is_fitted(self)
+            # Input validation
+            X = check_array(X)
+            closest = np.argmin(euclidean_distances(X, self.X_), axis=1)
+            return self.y_[closest]
+
+    class ARI_Precomputed(BaseEstimator):
+
+        def __init__(self, df, column_X, column_y, column_p, index2target, is_strict):
+            self.df = df
+            self.column_X = column_X
+            self.column_y = column_y
+            self.column_p = column_p
+            self.index2target = index2target
+            self.is_strict = is_strict
+
+        def fit(self, X, y):
+            # Check that X and y have correct shape
+            X, y = check_X_y(X, y)
+            
+            self.X_ = X
+            self.y_ = y
+            
+            X = [index2target[i] for i in X.flatten()]
+            df_clean = self.df[self.df[self.column_X].isin(X)]         
+            models_top = df_clean.groupby(self.column_p).agg({self.column_y: 'mean'}).nlargest(1, self.column_y, keep='all')
+            try:
+                assert len(models_top) <= 1
+            except AssertionError as e:
+                print('Warning: Found multiple top models.')
+                if self.is_strict:
+                    raise e
+            model_top = models_top.index.to_list()[0]       
+            self.model_top_ = model_top
+
+            return self
+        
+        def score(self, X, y):
+            X = [index2target[i] for i in X.flatten()]
+            #print(X)
+            model_top = self.model_top_
+            df_clean = self.df[self.df[self.column_X].isin(X)]
+            df_clean_model_top = df_clean[df_clean[self.column_p].eq(model_top)]
+            assert len(df_clean_model_top) == len(X)
+            mean = df_clean_model_top[self.column_y].mean()
+            return mean
+
+
+
+
+
+    targets = df_dwug_de['lemma'].unique()
+    target2index = {target:index for index, target in enumerate(targets)}
+    index2target = {index:target for index, target in enumerate(targets)}
+    indices = np.array(list(target2index.values())).reshape(-1, 1)
+    cluster = df_dwug_de['cluster']
+    #print(targets)
+    #print(indices)
+    #print(cluster)
+
+    #df_results_reduced = df_results[(df_results['ambiguity'].eq('None')) & (df_results['collapse'].eq('None'))]
+    df_results_reduced = df_results
+    #print(f'\n\n\n {df_results_reduced}')
+    print('\n\n\n\n')
+
+    # Iterate over different methods
+    methods = [('all','method'), ('wsbm','method'), ('correlation','method')]
+    #base_models = [('wsbm_dwug_de_2.3.0-0.0-None-None-binomial-False-False','model'), ('wsbm_dwug_de_2.3.0-0.0-None-None-binomial-True-False','model'), ('wsbm_dwug_de_2.3.0-0.0-None-None-binomial-True-True','model'), ('correlation_dwug_de_2.3.0-2.7-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.6-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.5-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.4-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.3-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.2-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.1-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.0-None-None-None-None-None','model'), ('chinese_dwug_de_2.3.0-2.5-None-top-None-None-None','model')]
+    #methods_models = methods + base_models
+    methods_models = methods 
+    models_to_plot, method2cvaris = {}, {}
+    for m, col in methods_models:
+        
+        print('*' +m +'*')
+        
+        if m=='all':
+            df_results_method = df_results_reduced
+        else:
+            df_results_method = df_results_reduced[df_results_reduced[col].eq(m)]
+            
+        #display(df_results_method)
+        
+        estimator = ARI_Precomputed(df_results_method, 'word', 'ARI', 'model', index2target, False)    
+        cv_results = cross_validate(estimator, indices, indices.ravel(), cv=len(indices), return_estimator=True, error_score='raise')
+
+        # Get average result
+        test_score = cv_results['test_score']
+        method2cvaris[m] = {lemma: test_score[i] for i,lemma in index2target.items()}
+        test_score_mean, test_score_std = np.mean(test_score), np.std(test_score)
+        #display(test_score)
+        print('test_score_mean', 'test_score_std', test_score_mean, test_score_std)
+
+        # Get best models
+        test_estimators = cv_results['estimator']
+        top_models = [estimator.model_top_ for estimator in test_estimators]
+        #print('top_models', top_models)
+        print('top_models unique', np.unique(top_models))
+        print('top_models counts', Counter(top_models).most_common())
+        
+        #top_models_variance = len(set(top_models))/len(top_models)
+        print('number top_models', len(np.unique(top_models)))
+        models_to_plot[m] = top_models
+        print('mean cluster_no top_models unique (true mean number of clusters = 2.75)', [df_results_reduced[df_results_reduced['model'].eq(tm)]['cluster_no'].mean() for tm in np.unique(top_models)])
+
+
+
+
+
+
+    # Models selected by CV
 
 
 
@@ -119,5 +276,5 @@ def evaluate_clustering(dataset, clustering_method="k-means"):
 
 
 if __name__=="__main__":
-    dataset = "./paper_data/dwug_de"
-    evaluate_clustering(dataset, clustering_method="k-means")
+    dataset = "./data/dwug_de"
+    evaluate_clustering(dataset)
