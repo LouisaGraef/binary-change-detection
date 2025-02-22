@@ -29,6 +29,7 @@ from sklearn.utils.multiclass import unique_labels
 from sklearn.metrics import euclidean_distances
 from collections import Counter
 import ast
+import seaborn as sns
 
 
 """
@@ -85,32 +86,36 @@ def evaluate_clustering(dataset):
         df['clustering_pred'] = df['clustering_pred'].apply(ast.literal_eval)        # string to dictionary
         df['clustering_gold'] = df['clustering_gold'].apply(ast.literal_eval)        # string to dictionary
 
-        ari_values = []
-        spearmanr_values = []
-        for index, row in df.iterrows():
-            # evaluate clustering
-            pred_clusters = row['clustering_pred']
-            gold_clusters = row['clustering_gold']
-            pred_labels = [pred_clusters[node] for node in sorted(pred_clusters)]
-            gold_labels = [gold_clusters[node] for node in sorted(gold_clusters)]
-            ari = adjusted_rand_score(gold_labels, pred_labels)
-            ari_values.append(ari)
-            
 
-        # evaluate Graded Change
-        spearman, p_value = spearmanr(df['GC_pred'], df['GC_gold'])
+        # GC_Spearmanr and BC_F1 for each model seperately 
+        model_groups = df.groupby('model')
+        for model_name, model_df in model_groups:
 
-        # evaluate Binary Change
-        f1 = f1_score(df['BC_gold'], df['BC_pred'])
+            ari_values = []
+            for index, row in model_df.iterrows():
+                # evaluate clustering
+                pred_clusters = row['clustering_pred']
+                gold_clusters = row['clustering_gold']
+                pred_labels = [pred_clusters[node] for node in sorted(pred_clusters)]
+                gold_labels = [gold_clusters[node] for node in sorted(gold_clusters)]
+                ari = adjusted_rand_score(gold_labels, pred_labels)
+                ari_values.append(ari)
+                
 
-        # Add columns and reorder 
-        df['ARI'] = ari_values
-        df['GC_Spearmanr'] = spearman
-        df['BC_F1'] = f1
-        df['cluster_no'] = df['clustering_pred'].apply(lambda x: len(set(x.values())))             # number of clusters (predicted)
-        df = df[['model', 'word', 'ARI', 'GC_Spearmanr', 'BC_F1', 'cluster_no', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 
-                 'method','parameter_combination', 'clustering_pred', 'clustering_gold']]
-        clustering_parameter_grid = pd.concat([clustering_parameter_grid, df], ignore_index=True)
+            # evaluate Graded Change
+            spearman, p_value = spearmanr(model_df['GC_pred'], model_df['GC_gold'])
+
+            # evaluate Binary Change
+            f1 = f1_score(model_df['BC_gold'], model_df['BC_pred'])
+
+            # Add columns and reorder 
+            model_df['ARI'] = ari_values
+            model_df['GC_Spearmanr'] = spearman
+            model_df['BC_F1'] = f1
+            model_df['cluster_no'] = model_df['clustering_pred'].apply(lambda x: len(set(x.values())))             # number of clusters (predicted)
+            model_df = model_df[['model', 'word', 'ARI', 'GC_Spearmanr', 'BC_F1', 'cluster_no', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 
+                    'method','parameter_combination', 'clustering_pred', 'clustering_gold']]
+            clustering_parameter_grid = pd.concat([clustering_parameter_grid, model_df], ignore_index=True)
 
 
     
@@ -127,7 +132,7 @@ def evaluate_clustering(dataset):
     print(df_results.groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='GC_Spearmanr', ascending=False))
     print('\nSorted by BC_F1: ')
     print(df_results.groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='BC_F1', ascending=False))
-    print('\nMethod = correlation')
+    print('\nMethod = correlation:')
     print(df_results[df_results['method'].eq('correlation')].groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='ARI', ascending=False))
     #quit()
 
@@ -223,7 +228,7 @@ def evaluate_clustering(dataset):
     print('\n\n\n\n')
 
     # Iterate over different methods
-    methods = [('all','method'), ('wsbm','method'), ('correlation','method')]
+    methods = [('all','method'), ('wsbm','method'), ('correlation','method'), ('k-means','method'), ('spectral','method'), ('agglomerative','method')]
     #base_models = [('wsbm_dwug_de_2.3.0-0.0-None-None-binomial-False-False','model'), ('wsbm_dwug_de_2.3.0-0.0-None-None-binomial-True-False','model'), ('wsbm_dwug_de_2.3.0-0.0-None-None-binomial-True-True','model'), ('correlation_dwug_de_2.3.0-2.7-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.6-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.5-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.4-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.3-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.2-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.1-None-None-None-None-None','model'), ('correlation_dwug_de_2.3.0-2.0-None-None-None-None-None','model'), ('chinese_dwug_de_2.3.0-2.5-None-top-None-None-None','model')]
     #methods_models = methods + base_models
     methods_models = methods 
@@ -260,16 +265,54 @@ def evaluate_clustering(dataset):
         print('number top_models', len(np.unique(top_models)))
         models_to_plot[m] = top_models
         print('mean cluster_no top_models unique (true mean number of clusters = 2.75)', [df_results_reduced[df_results_reduced['model'].eq(tm)]['cluster_no'].mean() for tm in np.unique(top_models)])
-
+        print('')
 
 
 
 
 
     # Models selected by CV
+    method2modelscnt = {method: Counter(models) for method,models in models_to_plot.items()}
+    df_results_reduced['cnt'] = df_results_reduced.apply(lambda r: method2modelscnt[r.method][r.model], axis=1)
+
+    q = df_results_reduced[df_results_reduced.cnt>0]
+    q2 = q.drop(columns=['ARI','GC_Spearmanr', 'BC_F1', 'word','cluster_no', 'clustering_pred', 'clustering_gold', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold']).groupby('model').first().sort_values(by=['method','cnt'], ascending=False)
+
+    print("\nModels selected by CV:")
+    print(q2)
+
+
+    print('\n\nWARNING! Biased estimates of ARI: taking the most frequently selected configuration for each method!')
+    biased_estimates = df_results_reduced[df_results_reduced.model.isin([method2modelscnt[m].most_common(1)[0][0] 
+                                                    for m in ['wsbm','correlation', 'k-means', 'spectral', 'agglomerative']])].groupby('model').ARI.mean()
+    print(biased_estimates)
 
 
 
+
+    # Comparison of clustering methods: for each word we take its cross-validated ARI 
+
+    df_cv = pd.DataFrame.from_records( ((method, lemma, ari) for method, lemma2ari in method2cvaris.items() 
+                          for lemma,ari in lemma2ari.items()), columns=['method','lemma','ARI'])
+    print('\n\nComparison of Clustering Methods: cross-validated ARI for each word')
+    print(df_cv)
+
+
+
+
+    sns.set_context(context='poster')
+
+
+    q = df_cv[df_cv.method.isin(['wsbm','correlation', 'k-means', 'spectral', 'agglomerative'])]   
+    q.method = q.method.replace('wsbm','WSBM').replace('correlation', 'CC').replace('agglomerative','AGGL')
+    method_order = ['WSBM','CC', 'k-means', 'spectral', 'AGGL']
+    g=sns.catplot(data=q.sort_values(by='lemma'), 
+                    y='ARI', x='lemma', hue='method', hue_order=method_order, kind='bar', orient='v', legend_out=True, aspect=5)
+    g.set_xticklabels(rotation=90)
+
+    g.savefig('barplot_ARI_bestmodels_perword.pdf')
+    ari_mean = q.groupby('method').ARI.mean()
+    print(ari_mean)
 
 
 
