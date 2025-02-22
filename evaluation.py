@@ -118,13 +118,14 @@ def read_data(dataset, paper_reproduction):
             gold_cluster = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep='\t')
 
         # ignore noisy word usages (i.e. cluster = -1)
-        valid_idx = gold_cluster[gold_cluster.cluster!=-1].identifier.values  # nodes that are not in gold cluster -1 
-        # filter -1 nodes out of gold clusters and -1 edges out of gold edge weights and predicted edge weights 
-        gold_cluster = gold_cluster[gold_cluster.identifier.isin(valid_idx)]  
-        if not dataset=="./data/dwug_la":
+        if paper_reproduction==True:
+            valid_idx = gold_cluster[gold_cluster.cluster!=-1].identifier.values  # nodes that are not in gold cluster -1 
+            # filter -1 nodes out of gold clusters and -1 edges out of gold edge weights and predicted edge weights 
+            gold_cluster = gold_cluster[gold_cluster.identifier.isin(valid_idx)]  
             edge_preds[i] = edge_preds[i][edge_preds[i].identifier1.isin(valid_idx) & edge_preds[i].identifier2.isin(valid_idx)].sort_values(['identifier1', 'identifier2']).reset_index()
         
-
+        if not dataset=="./data/dwug_la":
+            
             # ignore usage pairs for which it wasn't possible to make a prediction
             usages = set(edge_preds[i].loc[edge_preds[i]['edge_pred'].notna(), 'identifier1'].tolist()
                         + edge_preds[i].loc[edge_preds[i]['edge_pred'].notna(), 'identifier2'].tolist())           # all nodes that have edge predictions 
@@ -382,9 +383,15 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
     
     combinations = list(itertools.product(*parameter_list))     # all parameter combinations
     
-    if clustering_method=="correlation":
-        standard_parameter_list = [[0.45, 0.5, 0.55, 0.6, 0.65], [200], [5000]]     # add standard parameters for max_attempts and max_iters 
-        combinations = combinations + list(itertools.product(*standard_parameter_list))
+    #if clustering_method=="correlation":
+    #    standard_parameter_list = [[0.5, 0.6], [200], [5000]]     # add standard parameters for max_attempts and max_iters 
+    #    combinations = combinations + list(itertools.product(*standard_parameter_list))
+    print(combinations)
+
+    # delete old parameter grid if one exists
+    df_output_file=f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv"
+    if os.path.exists(df_output_file):
+        os.remove(df_output_file)
 
     for comb in combinations:
         if comb[0] == 'ward' and not comb[1] == 'euclidean':    # Agglomerative clustering: Ward can only work with euclidean distances.
@@ -433,6 +440,14 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
                             'BC_pred': bc_pred, 'BC_gold': bc_true, 'clustering_pred': clustering_pred, 'clustering_gold': gold_clusters_word}
             parameter_grid.loc[len(parameter_grid)] = new_grid_row
         
+        
+        # Save Parameter grid of dataset (and clustering method)
+        df_output_file=f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv"
+        if not os.path.exists(df_output_file):
+            os.makedirs(os.path.dirname(df_output_file), exist_ok=True)
+            parameter_grid.to_csv(df_output_file, sep='\t', mode='w', index=False)
+        else:
+            parameter_grid.to_csv(df_output_file, sep='\t', mode='a', header=False, index=False)
 
 
 
@@ -456,10 +471,6 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             f.writelines(paper_eval_lines)
 
 
-    # Save Parameter grid of dataset (and clustering method)
-    df_output_file=f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv"
-    os.makedirs(os.path.dirname(df_output_file), exist_ok=True)
-    parameter_grid.to_csv(df_output_file, sep='\t', index=False)
 
 
 
