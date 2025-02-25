@@ -369,9 +369,6 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
         edge_preds = standardize_edge_preds(edge_preds)
 
     
-    # Parameter grid for crossvalidation (Clustering: Mapping from node identifiers to Cluster ID (dictionary))
-    parameter_grid = pd.DataFrame(
-        columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold'])
 
     
     # print(edge_preds[0].columns.tolist())  # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2'] for first word
@@ -399,6 +396,11 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
         if comb[0] == 'rbf' and (comb[1] == 10 or comb[1] == 15):   # Spectral clustering: n_neighbors not relevant for rbf (only let rbf run once)
             continue
         print(f'\n\nParameters: {comb}')
+        
+        # Parameter grid for crossvalidation (Clustering: Mapping from node identifiers to Cluster ID (dictionary))
+        parameter_grid = pd.DataFrame(
+            columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold'])
+        
         for i, word in enumerate(words):                    # iterate over words
             if paper_reproduction:
                 word_edge_preds = edge_preds[i]
