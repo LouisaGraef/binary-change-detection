@@ -29,3 +29,4 @@ collapse_dependence.pdf
 *.png
 *.jpg
 update-git.sh
+.cache/

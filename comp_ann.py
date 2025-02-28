@@ -24,8 +24,7 @@ from tqdm import tqdm
 
 
 """
-Process uses for one dataset (rename uses['grouping'] for Nordiachange subsets 1 and 2, remove uses with cluster '-1')
-(only relevant for paper reproduction)
+Process uses for one dataset (rename uses['grouping'] for Nordiachange subsets 1 and 2, remove uses with cluster '-1' for paper reproduction)
 """
 def processing(dataset, uses, word):
 
@@ -36,12 +35,13 @@ def processing(dataset, uses, word):
         uses['grouping'] = [1 if '1980-1990' == i else 2 for i in uses['grouping']]
 
     # remove uses with cluster '-1'.
-    try:
-        clusters = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep='\t')
-        uses_to_remove = clusters[clusters['cluster']==-1].identifier.values        # identifier of uses to remove 
-        uses = uses[~uses.identifier.isin(uses_to_remove)]                          # remove uses to remove 
-    except: 
-        pass
+    if "paper" in dataset:
+        try:
+            clusters = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep='\t')
+            uses_to_remove = clusters[clusters['cluster']==-1].identifier.values        # identifier of uses to remove 
+            uses = uses[~uses.identifier.isin(uses_to_remove)]                          # remove uses to remove 
+        except: 
+            pass
     
     return uses
 
@@ -243,6 +243,7 @@ def get_computational_annotation(dataset, paper_reproduction):
     words = sorted(os.listdir(f'{dataset}/data/'))
     # load xl-lexeme
     model = WordTransformer('pierluigic/xl-lexeme', device='cuda')  
+    #model = WordTransformer(model_name_or_path="./.cache/torch/sentence_transformers/models--pierluigic--xl-lexeme")  
 
     # E[word] = (E_1, E_2), all identifer 1 embeddings, all identifier 2 embeddings
     E = dict()
@@ -275,7 +276,9 @@ def get_computational_annotation(dataset, paper_reproduction):
             print('.')
 
         else:                                               # no paper reproduction: predict edge weights of all edges 
+            graph_counter = 1
             word_preds, word_preds_full = predict_all_edges(model, dataset, word, words, judgments)
+            print(f'{graph_counter}/{len(words)}')
             
             edge_preds_full[word] = word_preds_full
             edge_preds[word]= word_preds
