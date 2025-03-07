@@ -36,6 +36,7 @@ from modules import get_nan_edges
 from cleaning import clean_graph
 from evaluation import get_cluster_distributions, predict_binary
 from scipy.spatial.distance import jensenshannon
+from tqdm import tqdm
 
 
 """
@@ -49,7 +50,12 @@ def load_gold_clustering(dataset):
     
     # load Gold Clustering 
     df_dwug_de = pd.DataFrame()                                                         # gold clustering 
-    for p in Path(f'{dataset}/').glob('clusters/opt/*.csv'):    
+    if "nor_dia_change" in dataset:
+        gold_clusters_path = 'clusters/*.tsv'
+    else:
+        gold_clusters_path = 'clusters/opt/*.csv'
+
+    for p in Path(f'{dataset}/').glob(gold_clusters_path):    
         lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','')
         lemma = unicodedata.normalize('NFC', lemma)
         df = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
@@ -58,15 +64,23 @@ def load_gold_clustering(dataset):
 
     # Extract grouping (time) information
     df_dwug_de_uses = pd.DataFrame()
-    for p in Path(f'{dataset}/data').glob('*/uses.csv'):
-        df_dwug_de_uses = pd.concat([df_dwug_de_uses, pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)])
+    for p in Path(f'{dataset}/data').glob('*/uses.csv'):    
+        uses = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
+
+        # rename uses['grouping'] for Nordiachange subsets 1 and 2
+        if 'nor_dia_change/subset1' in dataset:
+            uses['grouping'] = [1 if '1970-2015' == i else 2 for i in uses['grouping']]
+        elif 'nor_dia_change/subset2' in dataset:
+            uses['grouping'] = [1 if '1980-1990' == i else 2 for i in uses['grouping']]
+
+        df_dwug_de_uses = pd.concat([df_dwug_de_uses, uses])
 
 
     df_dwug_de = df_dwug_de.merge(df_dwug_de_uses[['identifier', 'lemma', 'grouping']], how='left',      
                                                 on = ['identifier', 'lemma'])
     # columns: ['identifier', 'cluster', 'lemma', 'grouping']
     
-    print(f'df_dwug_de: \n{df_dwug_de}\n')
+    #print(f'df_dwug_de: \n{df_dwug_de}\n')
 
     return df_dwug_de
 
@@ -75,10 +89,10 @@ def load_gold_clustering(dataset):
 
 
 
-def evaluate_clustering(dataset, cleaned_gold):
+def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
 
     
-    print(f'\nDataset: {dataset}\n')
+    print(f'\n\n\n\n\n\nDataset: {dataset}\ncleaned_gold = {cleaned_gold}\nfilter_minus_one_nodes = {filter_minus_one_nodes}\n\n')
 
     # load Gold Clustering 
     if cleaned_gold == True:
@@ -86,7 +100,7 @@ def evaluate_clustering(dataset, cleaned_gold):
     else:
         df_dwug_de = load_gold_clustering(dataset)
 
-    print(df_dwug_de)
+    #print(df_dwug_de)
 
 
     # load Clustering Parameter Grid, Add columns to clustering_parameter_grid: model, method, ARI, GC_Spearmanr, BC_F1
@@ -102,22 +116,42 @@ def evaluate_clustering(dataset, cleaned_gold):
         df['method'] = method
         df['model'] = (f'{method}_{ds}_' + df['parameter_combination'].astype(str))
 
-        valid_identifiers = set(df_dwug_de['identifier'])       # only nodes that are not removed in cleaning
+
+        # only nodes that are not removed in cleaning
+        lemma_to_valid_identifiers = df_dwug_de.groupby('lemma')['identifier'].apply(set).to_dict()
+
         df['clustering_pred'] = df['clustering_pred'].apply(ast.literal_eval)        # string to dictionary
         df['clustering_gold'] = df['clustering_gold'].apply(ast.literal_eval)        # string to dictionary
-        df['clustering_pred'] = df['clustering_pred'].apply(lambda d: {k: v for k, v in d.items() if k in valid_identifiers})   # filter cleaned nodes out
-        df['clustering_gold'] = df['clustering_gold'].apply(lambda d: {k: v for k, v in d.items() if k in valid_identifiers})
+        #print(df['clustering_pred'][0])
 
-        print(df)
+        # filter cleaned nodes out
+        df['clustering_pred'] = df.apply(lambda row: {k: v for k, v in row['clustering_pred'].items() 
+                                                      if k in lemma_to_valid_identifiers[row['word']]}, axis=1)
+        df['clustering_gold'] = df.apply(lambda row: {k: v for k, v in row['clustering_gold'].items() 
+                                                      if k in lemma_to_valid_identifiers[row['word']]}, axis=1)
+        #print(df['clustering_pred'][0])
+
+        # filter -1 nodes out
+        if filter_minus_one_nodes == True:
+            df['invalid_keys'] = df.apply(lambda row: {k for k, v in row['clustering_pred'].items() if v in {-1, "-1"}} | 
+                                             {k for k, v in row['clustering_gold'].items() if v in {-1, "-1"}}, axis=1)
+            df['clustering_pred'] = df.apply(lambda row: {k: v for k, v in row['clustering_pred'].items() 
+                                                          if k not in row['invalid_keys']}, axis=1)
+            df['clustering_gold'] = df.apply(lambda row: {k: v for k, v in row['clustering_gold'].items() 
+                                                          if k not in row['invalid_keys']}, axis=1)
+            df.drop(columns=['invalid_keys'], inplace=True)
+        #print(df['clustering_pred'][0])
+
+    
+        #print(df)
 
 
         # Add new GC_gold, BC_gold, GC_pred and BC_pred for cleaned dataset version
         if cleaned_gold==True:
             lemma_groups = df.groupby('word')
             for lemma_name, lemma_df in lemma_groups:
-                counter = 0
                 for index, row in lemma_df.iterrows():
-                    if index > 0:
+                    if index > 0:                           # only one iteration per lemma
                         continue
                     # Get list of sets of identifiers that belong to the same cluster
                     cluster_sets = {}
@@ -134,12 +168,10 @@ def evaluate_clustering(dataset, cleaned_gold):
 
                     df.loc[df['word'] == lemma_name, 'GC_gold'] = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
                     df.loc[df['word'] == lemma_name, 'BC_gold'] = predict_binary(freq_dist)
-                    counter +=1
-                    print(counter)
 
 
-            counter = 0
-            for index, row in df.iterrows():
+
+            for index, row in tqdm(df.iterrows(), total=len(df), desc=f"Predicting GC_pred and BC_pred (method={method})"):
 
                 # Get list of sets of identifiers that belong to the same cluster
                 cluster_sets = {}
@@ -154,11 +186,12 @@ def evaluate_clustering(dataset, cleaned_gold):
                 # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
                 freq_dist, prob_dist = get_cluster_distributions(classes_sets)
 
+                print(row['clustering_pred'])
+                print(classes_sets)
+                print(prob_dist)
                 df.loc[index, 'GC_pred'] = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
                 df.loc[index, 'BC_pred'] = predict_binary(freq_dist)
 
-                counter +=1
-                print(counter)
 
 
 
@@ -195,9 +228,10 @@ def evaluate_clustering(dataset, cleaned_gold):
             clustering_parameter_grid = pd.concat([clustering_parameter_grid, model_df], ignore_index=True)
 
 
-    
-    print('\ndf_results: ')
+
     df_results = clustering_parameter_grid
+    """
+    print('\ndf_results: ')
     print(df_results)
     print(df_results.columns.tolist())
     
@@ -211,7 +245,7 @@ def evaluate_clustering(dataset, cleaned_gold):
     print(df_results.groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='BC_F1', ascending=False))
     print('\nMethod = correlation:')
     print(df_results[df_results['method'].eq('correlation')].groupby('model').agg({'ARI': 'mean','GC_Spearmanr': 'mean','BC_F1': 'mean'}).sort_values(by='ARI', ascending=False))
-
+    """
 
 
 
@@ -299,6 +333,7 @@ def evaluate_clustering(dataset, cleaned_gold):
                 
             
             estimator = ARI_Precomputed(df_results_method, 'word', metric, 'model', index2target, False)    
+            # n fold cross validation (cv=len(indices))
             cv_results = cross_validate(estimator, indices, indices.ravel(), cv=len(indices), return_estimator=True, error_score='raise')
 
             # Get average result
@@ -335,18 +370,26 @@ def evaluate_clustering(dataset, cleaned_gold):
         print("\nModels selected by CV:")
         print(q2)
         os.makedirs(f"./clustering_evaluation/{ds}/{metric}", exist_ok=True)
+        os.makedirs(f"./clustering_evaluation/{ds}_without_minus_one/{metric}", exist_ok=True)
         os.makedirs(f"./clustering_evaluation/{ds}_cleaned/{metric}", exist_ok=True)
-        if cleaned_gold==False:
-            q2.to_csv(f"./clustering_evaluation/{ds}/{metric}/models_selected_by_cv.csv", index=False)   # save
-        else:
-            q2.to_csv(f"./clustering_evaluation/{ds}_cleaned/{metric}/models_selected_by_cv.csv", index=False)   # save
+        os.makedirs(f"./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}", exist_ok=True)
+        if cleaned_gold==False:                     # uncleaned gold
+            if filter_minus_one_nodes == True:
+                q2.to_csv(f"./clustering_evaluation/{ds}_without_minus_one/{metric}/models_selected_by_cv.csv", index=False)   # save
+            else:
+                q2.to_csv(f"./clustering_evaluation/{ds}/{metric}/models_selected_by_cv.csv", index=False)   # save
+        else:                                       # cleaned gold
+            if filter_minus_one_nodes == True:
+                q2.to_csv(f"./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}/models_selected_by_cv.csv", index=False)   # save
+            else:
+                q2.to_csv(f"./clustering_evaluation/{ds}_cleaned/{metric}/models_selected_by_cv.csv", index=False)   # save
 
-
+        """
         print('\n\nWARNING! Biased estimates of ARI: taking the most frequently selected configuration for each method!')
         biased_estimates = df_results_reduced[df_results_reduced.model.isin([method2modelscnt[m].most_common(1)[0][0] 
                                                         for m in ['wsbm','correlation', 'k-means', 'spectral', 'agglomerative']])].groupby('model').ARI.mean()
         print(biased_estimates)
-
+        """
 
 
 
@@ -354,8 +397,8 @@ def evaluate_clustering(dataset, cleaned_gold):
 
         df_cv = pd.DataFrame.from_records( ((method, lemma, ari) for method, lemma2ari in method2cvaris.items() 
                             for lemma,ari in lemma2ari.items()), columns=['method','lemma','ARI'])
-        print('\n\nComparison of Clustering Methods: cross-validated ARI for each word')
-        print(df_cv)
+        #print('\n\nComparison of Clustering Methods: cross-validated ARI for each word')
+        #print(df_cv)
 
 
 
@@ -371,21 +414,35 @@ def evaluate_clustering(dataset, cleaned_gold):
         g.set_ylabels(f'{metric}')
         g.set_xticklabels(rotation=90)
 
-        os.makedirs(f"./clustering_evaluation/{ds}/{metric}", exist_ok=True)
-        os.makedirs(f"./clustering_evaluation/{ds}_cleaned/{metric}", exist_ok=True)
-        if cleaned_gold==False:
-            g.savefig(f'./clustering_evaluation/{ds}/{metric}/barplot_bestmodels_perword.pdf')
-        else:
-            g.savefig(f'./clustering_evaluation/{ds}_cleaned/{metric}/barplot_bestmodels_perword.pdf')
+        #os.makedirs(f"./clustering_evaluation/{ds}/{metric}", exist_ok=True)
+        #os.makedirs(f"./clustering_evaluation/{ds}_cleaned/{metric}", exist_ok=True)
+
+        if cleaned_gold==False:                     # uncleaned gold
+            if filter_minus_one_nodes == True:
+                g.savefig(f'./clustering_evaluation/{ds}_without_minus_one/{metric}/barplot_bestmodels_perword.pdf')
+            else:
+                g.savefig(f'./clustering_evaluation/{ds}/{metric}/barplot_bestmodels_perword.pdf')
+        else:                                       # cleaned gold
+            if filter_minus_one_nodes == True:
+                g.savefig(f'./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}/barplot_bestmodels_perword.pdf')
+            else:
+                g.savefig(f'./clustering_evaluation/{ds}_cleaned/{metric}/barplot_bestmodels_perword.pdf')
 
         ari_mean = q.groupby('method').ARI.mean()
         print(f'\nMean crossvalidated {metric}:')
         print(ari_mean)
         ari_mean_df = ari_mean.reset_index().rename(columns={'ARI': f'{metric}'})
-        if cleaned_gold==False:
-            ari_mean_df.to_csv(f"./clustering_evaluation/{ds}/{metric}/mean_crossvalidated_results.csv", index=False)   # save
-        else:
-            ari_mean_df.to_csv(f"./clustering_evaluation/{ds}_cleaned/{metric}/mean_crossvalidated_results.csv", index=False)   # save
+
+        if cleaned_gold==False:                     # uncleaned gold
+            if filter_minus_one_nodes == True:
+                ari_mean_df.to_csv(f"./clustering_evaluation/{ds}_without_minus_one/{metric}/mean_crossvalidated_results.csv", index=False)   # save
+            else:
+                ari_mean_df.to_csv(f"./clustering_evaluation/{ds}/{metric}/mean_crossvalidated_results.csv", index=False)   # save
+        else:                                       # cleaned gold
+            if filter_minus_one_nodes == True:
+                ari_mean_df.to_csv(f"./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}/mean_crossvalidated_results.csv", index=False)   # save
+            else:
+                ari_mean_df.to_csv(f"./clustering_evaluation/{ds}_cleaned/{metric}/mean_crossvalidated_results.csv", index=False)   # save
 
 
 
@@ -415,7 +472,8 @@ def load_cleaned_gold_clustering(dataset):
     ds = dataset.replace("./data/", "")
     with open(f"./cleaning_parameters/{ds}/cleaning_parameters.pkl", "rb") as file:
         parameters = dill.load(file)
-
+    
+    #print("cleaning")
 
     for word in words:
         #print(repr(word))
@@ -459,7 +517,7 @@ def load_cleaned_gold_clustering(dataset):
         
         
         # clean graph 
-        methods = ["dgrnode"]
+        methods = ["clustersize"]
         for method in methods:
             parameter = 5
             model = str(method) + "_" + str(parameter)
@@ -485,7 +543,7 @@ def load_cleaned_gold_clustering(dataset):
             #print(word, method, parameter)
             #quit()
         counter +=1
-        print(counter)
+        #print(f"{counter}/{len(words)}")
 
 
 
@@ -511,7 +569,7 @@ def load_cleaned_gold_clustering(dataset):
                                                 on = ['identifier', 'lemma'])
     # columns: ['identifier', 'cluster', 'lemma', 'grouping']
     
-    print(f'df_dwug_de: \n{df_dwug_de}\n')
+    #print(f'df_dwug_de: \n{df_dwug_de}\n')
 
 
 
@@ -520,7 +578,7 @@ def load_cleaned_gold_clustering(dataset):
 
     df_dwug_de_cleaned = df_dwug_de.merge(df_cleaning[['identifier', 'lemma', 'cluster']], how='right', 
                                           on=['identifier', 'lemma', 'cluster'])
-    print(f'df_dwug_de cleaned: \n{df_dwug_de_cleaned}\n')
+    #print(f'df_dwug_de cleaned: \n{df_dwug_de_cleaned}\n')
 
 
     return df_dwug_de_cleaned
@@ -533,4 +591,7 @@ def load_cleaned_gold_clustering(dataset):
 
 if __name__=="__main__":
     dataset = "./data/dwug_de"
-    evaluate_clustering(dataset, cleaned_gold=False)
+    evaluate_clustering(dataset, cleaned_gold=False, filter_minus_one_nodes=False)
+    evaluate_clustering(dataset, cleaned_gold=False, filter_minus_one_nodes=True)
+    evaluate_clustering(dataset, cleaned_gold=True, filter_minus_one_nodes=False)
+    evaluate_clustering(dataset, cleaned_gold=True, filter_minus_one_nodes=True)

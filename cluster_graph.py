@@ -13,12 +13,15 @@ from sklearn.metrics import silhouette_score
 import graph_tool
 from clustering_interface_wsbm import wsbm_clustering
 import numpy as np
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+import time
+import threading
 
 
 """
 Cluster graph
 """
-def cluster_graph(graph, clustering_method, paper_reproduction, parameters):
+def cluster_graph(graph, clustering_method, paper_reproduction, parameters, word=None):
     if "correlation" in clustering_method:
         labels, classes_sets = cluster_graph_cc(graph, paper_reproduction, parameters)
     elif clustering_method=="k-means":
@@ -28,7 +31,7 @@ def cluster_graph(graph, clustering_method, paper_reproduction, parameters):
     elif clustering_method=="spectral":
         labels, classes_sets = cluster_graph_spectral(graph,parameters)
     elif clustering_method=="wsbm":
-        labels, classes_sets = cluster_graph_wsbm(graph, parameters)
+        labels, classes_sets = cluster_graph_wsbm(graph, parameters, word)
     
     return labels, classes_sets
 
@@ -48,7 +51,7 @@ def cluster_graph_cc(graph, paper_reproduction, parameters):
             threshold = parameters[0]
             weight_transformation = lambda x: x-threshold
             graph = transform_edge_weights(graph, transformation = weight_transformation) # shift edge weights
-            classes = cluster_correlation_search(graph, s=10, max_attempts=parameters[1], max_iters=parameters[2], initial=classes)
+            classes = cluster_correlation_search(graph, s=7, max_attempts=parameters[1], max_iters=parameters[2], initial=classes)
 
     # print(classes)          # Tupel: 1st element list of sets of nodes, 2nd element dict with parameters
 
@@ -69,20 +72,18 @@ def cluster_graph_cc(graph, paper_reproduction, parameters):
 Cluster Graph with Weighted Stochastic Block Model (WSBM)
 parameter: distribution either 'real-normal' or 'real-exponential'.
 """
-def cluster_graph_wsbm(graph, parameters):
+def cluster_graph_wsbm(graph, parameters, word):
     graph = graph.copy()
 
-    
-    # shift edge weights so that all edge weights are positive
-    weights = [edge_data['weight'] for u, v, edge_data in graph.edges(data=True)]
-    min_weight = min(weights)
-    if min_weight < 0:
-        for u, v, edge_data in graph.edges(data=True):
-            edge_data['weight'] += abs(min_weight)
-    
+    for u, v, edge_data in graph.edges(data=True):
+        edge_data['weight'] = max(edge_data['weight'], 0)   # small negative values
+
+    for u, v, edge_data in graph.edges(data=True):
+        edge_data['weight'] = int(edge_data['weight'] * 100)    # scale weights up
 
 
-    classes = wsbm_clustering(graph, distribution=parameters[0], is_weighted=True, weight_attributes=['weight'], weight_data_type='float', B_max=10)
+    classes = wsbm_clustering(graph, distribution=parameters[0], is_weighted=True, weight_attributes=['weight'], 
+                              weight_data_type='int', B_max=7, niter=100)
 
     # Store cluster labels (cluster label for each node)
     labels = list()

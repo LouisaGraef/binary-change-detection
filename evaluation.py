@@ -380,9 +380,6 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
     
     combinations = list(itertools.product(*parameter_list))     # all parameter combinations
     
-    #if clustering_method=="correlation":
-    #    standard_parameter_list = [[0.5, 0.6], [200], [5000]]     # add standard parameters for max_attempts and max_iters 
-    #    combinations = combinations + list(itertools.product(*standard_parameter_list))
     print(combinations)
 
     # delete old parameter grid if one exists
@@ -401,6 +398,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
         parameter_grid = pd.DataFrame(
             columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold'])
         
+        word_counter = 1
+        
         for i, word in enumerate(words):                    # iterate over words
             if paper_reproduction:
                 word_edge_preds = edge_preds[i]
@@ -409,7 +408,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
             graph = generate_graph(word_edge_preds)         # generate graph with predicted edge weights for word i
             # cluster graph (cluster_labels: dataframe with columns ['identifier', 'cluster'])
-            cluster_labels, classes_sets = cluster_graph(graph, clustering_method, paper_reproduction, comb)    
+            #print(word)
+            cluster_labels, classes_sets = cluster_graph(graph, clustering_method, paper_reproduction, comb, word=word)    
             
             # Evaluate clustering with ARI and Purity
             gold_clusters[i] = gold_clusters[i].sort_values('identifier')
@@ -422,14 +422,13 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
             clusters_metrics['adjusted_rand_score'].append(adjusted_rand_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
             clusters_metrics['purity'].append(purity_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
-            print(f'ARI: {clusters_metrics['adjusted_rand_score'][-1]}\tPurity: {clusters_metrics['purity'][-1]}')
+            print(f'{word_counter}/{len(words)}\t ARI: {clusters_metrics['adjusted_rand_score'][-1]}\tPurity: {clusters_metrics['purity'][-1]}')
 
             # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
             freq_dist, prob_dist = get_cluster_distributions(classes_sets)
             cluster_dists.append(prob_dist)     # cluster distributions for LSC 
 
             # Add evaluation results to parameter_grid
-            row_ARI = clusters_metrics['adjusted_rand_score'][-1]
             gc_pred = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
             bc_pred = predict_binary(freq_dist)
 
@@ -441,6 +440,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
             new_grid_row = {'parameter_combination': comb, 'word': word, 'GC_pred': gc_pred, 'GC_gold': gc_true, 
                             'BC_pred': bc_pred, 'BC_gold': bc_true, 'clustering_pred': clustering_pred, 'clustering_gold': gold_clusters_word}
             parameter_grid.loc[len(parameter_grid)] = new_grid_row
+
+            word_counter+=1
         
         
         # Save Parameter grid of dataset (and clustering method)

@@ -37,6 +37,9 @@ python -m pip install pyvis==0.1.9
 #export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 export LD_PRELOAD=$CONDA_PREFIX/lib/libgomp.so.1
 
+echo 'export LD_PRELOAD=$CONDA_PREFIX/lib/libgomp.so.1' >> ~/.bashrc
+source ~/.bashrc
+
 # To validate your installation, consider now running this
 #bash -e test.sh
 
@@ -83,7 +86,7 @@ pip install .
 #pip install huggingface_hub==0.25.0     # needed for XL-Lexeme model to work 
 #pip install huggingface_hub==0.17.0
 pip install --upgrade WordTransformer
-pip install WordTransformer==0.0.1 huggingface_hub==0.17.3 transformers==4.34.1
+pip install WordTransformer==0.0.1 huggingface_hub==0.17.3 transformers==4.34.1     # needed for XL-Lexeme model to work 
 # WordTransformer-0.0.1 huggingface_hub-0.17.3 sentence-transformers-2.2.2 tokenizers-0.14.1 transformers-4.34.1
 
 

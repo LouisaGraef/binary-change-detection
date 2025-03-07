@@ -252,7 +252,8 @@ def get_computational_annotation(dataset, paper_reproduction):
     edge_preds = dict()              # dictionary: for every word df of edge weight judgments and predictions (only edges with human judgment)
     edge_preds_full = dict()         # dictionary: for evary word df of edge weight predictions (all edges)
 
-    print(f'\nDataset: {dataset}')
+    print(f'\n\nDataset: {dataset}\n')
+    graph_counter = 1
 
     for word in words:
 
@@ -276,9 +277,9 @@ def get_computational_annotation(dataset, paper_reproduction):
             print('.')
 
         else:                                               # no paper reproduction: predict edge weights of all edges 
-            graph_counter = 1
             word_preds, word_preds_full = predict_all_edges(model, dataset, word, words, judgments)
             print(f'{graph_counter}/{len(words)}')
+            graph_counter+=1
             
             edge_preds_full[word] = word_preds_full
             edge_preds[word]= word_preds
