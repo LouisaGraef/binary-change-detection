@@ -56,8 +56,11 @@ def load_gold_clustering(dataset):
         gold_clusters_path = 'clusters/opt/*.csv'
 
     for p in Path(f'{dataset}/').glob(gold_clusters_path):    
-        lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','')
-        lemma = unicodedata.normalize('NFC', lemma)
+        lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','').replace('.tsv','')
+        if "dwug_es" in dataset:
+            lemma = unicodedata.normalize('NFKD', lemma)
+        else:
+            lemma = unicodedata.normalize('NFC', lemma)
         df = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
         df['lemma'] = lemma
         df_dwug_de = pd.concat([df_dwug_de, df])    
@@ -68,10 +71,12 @@ def load_gold_clustering(dataset):
         uses = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
 
         # rename uses['grouping'] for Nordiachange subsets 1 and 2
-        if 'nor_dia_change/subset1' in dataset:
+        if 'nor_dia_change-main/subset1' in dataset:
             uses['grouping'] = [1 if '1970-2015' == i else 2 for i in uses['grouping']]
-        elif 'nor_dia_change/subset2' in dataset:
+        elif 'nor_dia_change-main/subset2' in dataset:
             uses['grouping'] = [1 if '1980-1990' == i else 2 for i in uses['grouping']]
+        if "dwug_es" in dataset:
+            uses['lemma'] = uses['lemma'].apply(lambda x: unicodedata.normalize('NFKD', str(x)))
 
         df_dwug_de_uses = pd.concat([df_dwug_de_uses, uses])
 
@@ -100,6 +105,14 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
     else:
         df_dwug_de = load_gold_clustering(dataset)
 
+    if "dwug_es" in dataset:
+        df_dwug_de['lemma'] = df_dwug_de['lemma'].str.normalize('NFKD')
+
+    #print(df_dwug_de[df_dwug_de['lemma'] == unicodedata.normalize("NFKD", 'atrás')])
+    #print(df_dwug_de[df_dwug_de['lemma'] == 'anfektelse'])
+    #print(df_dwug_de.columns.tolist())     ['identifier', 'cluster', 'lemma', 'grouping']
+
+
     #print(df_dwug_de)
 
 
@@ -115,6 +128,8 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
         df = pd.read_csv(p, delimiter='\t')
         df['method'] = method
         df['model'] = (f'{method}_{ds}_' + df['parameter_combination'].astype(str))
+        if "dwug_es" in dataset:
+            df['word'] = df['word'].str.normalize('NFKD')
 
 
         # only nodes that are not removed in cleaning
@@ -185,11 +200,12 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
 
                 # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
                 freq_dist, prob_dist = get_cluster_distributions(classes_sets)
-
-                print(row['clustering_pred'])
-                print(classes_sets)
-                print(prob_dist)
-                df.loc[index, 'GC_pred'] = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
+                #print(classes_sets)
+                #print(prob_dist)
+                if prob_dist[0] == [] or prob_dist[1] == []:
+                    df.loc[index, 'GC_pred'] = None
+                else:
+                    df.loc[index, 'GC_pred'] = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
                 df.loc[index, 'BC_pred'] = predict_binary(freq_dist)
 
 
@@ -213,7 +229,7 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
                 
 
             # evaluate Graded Change
-            spearman, p_value = spearmanr(model_df['GC_pred'], model_df['GC_gold'])
+            spearman, p_value = spearmanr(model_df['GC_pred'], model_df['GC_gold'], nan_policy='omit')
 
             # evaluate Binary Change
             f1 = f1_score(model_df['BC_gold'], model_df['BC_pred'])
@@ -428,10 +444,18 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
             else:
                 g.savefig(f'./clustering_evaluation/{ds}_cleaned/{metric}/barplot_bestmodels_perword.pdf')
 
-        ari_mean = q.groupby('method').ARI.mean()
+        # q columns=['method','lemma','ARI']
+        #print(q)
+        #print(q.groupby('method'))
+
+
+        # for every method mean ARI over all lemmas 
+        ari_mean_df = q.groupby('method')['ARI'].apply(lambda x: pd.Series({'mean': np.mean(x), 'std': np.std(x)})).unstack().reset_index()
+        ari_mean_df.columns = ['method', f'{metric} mean', f'{metric} std']
         print(f'\nMean crossvalidated {metric}:')
-        print(ari_mean)
-        ari_mean_df = ari_mean.reset_index().rename(columns={'ARI': f'{metric}'})
+        print(f"\n{ari_mean_df}")
+        #ari_mean_df = ari_mean.reset_index().rename(columns={'ARI': f'{metric}'})
+
 
         if cleaned_gold==False:                     # uncleaned gold
             if filter_minus_one_nodes == True:
@@ -478,33 +502,35 @@ def load_cleaned_gold_clustering(dataset):
     for word in words:
         #print(repr(word))
         if "dwug_es" in dataset:
-            word = unicodedata.normalize('NFD', word)
+            word = unicodedata.normalize('NFKD', word)
         else:
             word = unicodedata.normalize('NFC', word)
 
-        if os.path.exists(f'{dataset}/clusters/opt/{word}.csv'):
-            clusters = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep="\t")
-        else:
-            clusters = pd.read_csv(f'{dataset}/clusters/{word}.tsv', sep="\t")
         
 
         # load graph
         if os.path.exists(f'{dataset}/graphs/opt/{word}'):
-            with open(f'{dataset}/graphs/opt/{word}.csv', 'rb') as f:
+            with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
                 graph = pickle.load(f)
         else:
             with open(f'{dataset}/graphs/{word}', 'rb') as f:
                 graph = pickle.load(f)
+
         # add cluster information to graph
-        clusters_df = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep='\t')
+        if os.path.exists(f'{dataset}/clusters/opt/{word}.csv'):
+            clusters_df = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep="\t")
+        else:
+            clusters_df = pd.read_csv(f'{dataset}/clusters/{word}.tsv', sep="\t")
         #print(clusters_df)
+
         identifier2cluster = dict(zip(clusters_df['identifier'], clusters_df['cluster']))
         for node in graph.nodes():
-            identifier = graph.nodes[node]["identifier"]
-            if identifier in identifier2cluster:
-                graph.nodes[node]["cluster"] = identifier2cluster[identifier]
-            else:
-                graph.nodes[node]["cluster"] = None
+            if "identifier" in graph.nodes[node]:           # sense nodes in dwug_la without identifier
+                identifier = graph.nodes[node]["identifier"]
+                if identifier in identifier2cluster:
+                    graph.nodes[node]["cluster"] = identifier2cluster[identifier]
+                else:
+                    graph.nodes[node]["cluster"] = None
 
 
         with open(f'{dataset}/annotators.csv', encoding='utf-8') as csvfile: 
@@ -531,7 +557,7 @@ def load_cleaned_gold_clustering(dataset):
 
             for node in g.nodes:
                 try:
-                    cluster = clusters.loc[clusters['identifier'] == node, 'cluster'].values[0]     # cluster of node 
+                    cluster = clusters_df.loc[clusters_df['identifier'] == node, 'cluster'].values[0]     # cluster of node 
                 except (IndexError):    # node with no cluster assignment
                     continue
                 # insert new row to df_cleaning 
@@ -547,14 +573,20 @@ def load_cleaned_gold_clustering(dataset):
 
 
 
-
-
-
     # load Gold Clustering (uncleaned)
     df_dwug_de = pd.DataFrame()                                                         # gold clustering 
-    for p in Path(f'{dataset}/').glob('clusters/opt/*.csv'):    
-        lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','')
-        lemma = unicodedata.normalize('NFC', lemma)
+    
+    if "nor_dia_change" in dataset:
+        gold_clusters_path = 'clusters/*.tsv'
+    else:
+        gold_clusters_path = 'clusters/opt/*.csv'
+
+    for p in Path(f'{dataset}/').glob(gold_clusters_path):    
+        lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','').replace('.tsv','')
+        if "dwug_es" in dataset:
+            lemma = unicodedata.normalize('NFKD', lemma)
+        else:
+            lemma = unicodedata.normalize('NFC', lemma)
         df = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
         df['lemma'] = lemma
         df_dwug_de = pd.concat([df_dwug_de, df])    
@@ -562,16 +594,25 @@ def load_cleaned_gold_clustering(dataset):
     # Extract grouping (time) information
     df_dwug_de_uses = pd.DataFrame()
     for p in Path(f'{dataset}/data').glob('*/uses.csv'):
-        df_dwug_de_uses = pd.concat([df_dwug_de_uses, pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)])
+        uses = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
 
+        # rename uses['grouping'] for Nordiachange subsets 1 and 2, normalize lemmas in dwug_es
+        if 'nor_dia_change-main/subset1' in dataset:
+            uses['grouping'] = [1 if '1970-2015' == i else 2 for i in uses['grouping']]
+        elif 'nor_dia_change-main/subset2' in dataset:
+            uses['grouping'] = [1 if '1980-1990' == i else 2 for i in uses['grouping']]
+        if "dwug_es" in dataset:
+            uses['lemma'] = uses['lemma'].apply(lambda x: unicodedata.normalize('NFKD', str(x)))
 
+        df_dwug_de_uses = pd.concat([df_dwug_de_uses, uses])
+
+    print(df_dwug_de_uses)
     df_dwug_de = df_dwug_de.merge(df_dwug_de_uses[['identifier', 'lemma', 'grouping']], how='left',      
                                                 on = ['identifier', 'lemma'])
+    print(df_dwug_de)
     # columns: ['identifier', 'cluster', 'lemma', 'grouping']
     
     #print(f'df_dwug_de: \n{df_dwug_de}\n')
-
-
 
 
     # only nodes left after cleaning

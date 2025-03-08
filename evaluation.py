@@ -247,7 +247,7 @@ def get_cluster_distributions(classes_sets):
     freq_dist = defaultdict(lambda: defaultdict(int))
     for j, cluster in enumerate(classes_sets):            # enumerate sets of nodes 
         for node in cluster:                            # enumerate nodes of cluster j 
-            time_period = int(node.split('###')[-1])
+            time_period = int(float(node.split('###')[-1]))
             freq_dist[time_period][j]+=1                # increase counter for cluster j in time period of node by 1
     
     # compute cluster probability distribution 

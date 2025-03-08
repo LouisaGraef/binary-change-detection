@@ -128,8 +128,8 @@ if __name__=="__main__":
 
     # Clustering evaluation
     
-    datasets = ["refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      # all datasets 
-                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2", "dwug_de", "discowug"]                               
+    datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      # all datasets 
+                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]                               
     datasets = ["./data/" + dataset for dataset in datasets]
 
     for dataset in datasets:
