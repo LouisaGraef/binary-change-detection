@@ -6,6 +6,7 @@ from evaluation import *
 import itertools
 import subprocess
 from evaluation_clustering import evaluate_clustering
+from evaluation_clustering_plot import evaluate_clustering_plot
 
 """
 Paper: https://arxiv.org/pdf/2402.12011 
@@ -125,7 +126,7 @@ if __name__=="__main__":
 
 
 
-
+    """
     # Clustering evaluation
     
     datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      # all datasets 
@@ -137,3 +138,13 @@ if __name__=="__main__":
         evaluate_clustering(dataset, cleaned_gold=False, filter_minus_one_nodes=True)
         evaluate_clustering(dataset, cleaned_gold=True, filter_minus_one_nodes=False)
         evaluate_clustering(dataset, cleaned_gold=True, filter_minus_one_nodes=True)
+    """
+
+
+
+    # Plot Clustering evaluation 
+
+    evaluate_clustering_plot(datasets, cleaned_gold=False, filter_minus_one_nodes=False)
+    evaluate_clustering_plot(datasets, cleaned_gold=False, filter_minus_one_nodes=True)
+    evaluate_clustering_plot(datasets, cleaned_gold=True, filter_minus_one_nodes=False)
+    evaluate_clustering_plot(datasets, cleaned_gold=True, filter_minus_one_nodes=True)
