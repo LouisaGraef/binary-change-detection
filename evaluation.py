@@ -282,13 +282,16 @@ def GCD(clusters_dists, gold_gc, paper_reproduction):
 """
 Predict binary change score of one word
 """
-def predict_binary(freq_dist):
+def predict_binary(freq_dist, minf=1, maxf=3, gold=False):
     bc_pred = 0
     cluster_ids = set(freq_dist[1].keys()).union(set(freq_dist[2].keys()))      # cluster ids (labels)
     for cluster_id in cluster_ids:
+        if gold == True and (cluster_id==-1 or cluster_id=="-1"):        # skip gold cluster -1 for binary change prediction 
+            (print("skip"))
+            continue
         freq1 = freq_dist[1].get(cluster_id,0)      # frequency of cluster id in time period 1
         freq2 = freq_dist[2].get(cluster_id,0)      # frequency of cluster id in time period 2
-        if freq1<=1 and freq2>=3 or freq2<=1 and freq1>=3:
+        if freq1<=minf and freq2>=maxf or freq2<=minf and freq1>=maxf:
             bc_pred = 1
 
     return bc_pred
@@ -430,7 +433,7 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
             # Add evaluation results to parameter_grid
             gc_pred = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
-            bc_pred = predict_binary(freq_dist)
+            bc_pred = predict_binary(freq_dist, minf=1, maxf=3, gold=False)
 
             gc_true = gold_gc.iloc[i]['change_graded']
             bc_true = gold_bc.iloc[i]['change_binary']

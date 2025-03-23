@@ -94,10 +94,10 @@ def load_gold_clustering(dataset):
 
 
 
-def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
+def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes, bc_min_max = [1,3]):
 
     
-    print(f'\n\n\n\n\n\nDataset: {dataset}\ncleaned_gold = {cleaned_gold}\nfilter_minus_one_nodes = {filter_minus_one_nodes}\n\n')
+    print(f'\n\n\n\n\n\nDataset: {dataset}\n bc_min_max = {bc_min_max}\ncleaned_gold = {cleaned_gold}\nfilter_minus_one_nodes = {filter_minus_one_nodes}\n\n')
 
     # load Gold Clustering 
     if cleaned_gold == True:
@@ -139,11 +139,11 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
         df['clustering_gold'] = df['clustering_gold'].apply(ast.literal_eval)        # string to dictionary
         #print(df['clustering_pred'][0])
 
-        # filter cleaned nodes out
-        df['clustering_pred'] = df.apply(lambda row: {k: v for k, v in row['clustering_pred'].items() 
-                                                      if k in lemma_to_valid_identifiers[row['word']]}, axis=1)
-        df['clustering_gold'] = df.apply(lambda row: {k: v for k, v in row['clustering_gold'].items() 
-                                                      if k in lemma_to_valid_identifiers[row['word']]}, axis=1)
+        # filter cleaned nodes out of clusterings
+        df['clustering_pred'] = df.apply(lambda row: {k: v for k, v in row['clustering_pred'].items()  
+                                              if k in lemma_to_valid_identifiers.get(row['word'], set())}, axis=1)
+        df['clustering_gold'] = df.apply(lambda row: {k: v for k, v in row['clustering_gold'].items()  
+                                              if k in lemma_to_valid_identifiers.get(row['word'], set())}, axis=1)
         #print(df['clustering_pred'][0])
 
         # filter -1 nodes out
@@ -161,37 +161,16 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
         #print(df)
 
 
-        # Add new GC_gold, BC_gold, GC_pred and BC_pred for cleaned dataset version
-        if cleaned_gold==True:
-            lemma_groups = df.groupby('word')
-            for lemma_name, lemma_df in lemma_groups:
-                for index, row in lemma_df.iterrows():
-                    if index > 0:                           # only one iteration per lemma
-                        continue
-                    # Get list of sets of identifiers that belong to the same cluster
-                    cluster_sets = {}
-                    id_to_grouping = {row2['identifier']: f"{row2['identifier']}###{row2['grouping']}" for index, row2 in df_dwug_de.iterrows()}
-                    for identifier, cluster in row['clustering_gold'].items():
-                        if cluster not in cluster_sets.keys():
-                            cluster_sets[cluster] = set()
-                        identifier = id_to_grouping[identifier]
-                        cluster_sets[cluster].add(identifier)
-                    classes_sets = list(cluster_sets.values())
-
-                    # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
-                    freq_dist, prob_dist = get_cluster_distributions(classes_sets)
-
-                    df.loc[df['word'] == lemma_name, 'GC_gold'] = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
-                    df.loc[df['word'] == lemma_name, 'BC_gold'] = predict_binary(freq_dist)
-
-
-
-            for index, row in tqdm(df.iterrows(), total=len(df), desc=f"Predicting GC_pred and BC_pred (method={method})"):
-
+        # Add new GC_gold, BC_gold, GC_pred and BC_pred 
+        lemma_groups = df.groupby('word')
+        for lemma_name, lemma_df in lemma_groups:
+            for index, row in lemma_df.iterrows():
+                if index > 0:                           # only one iteration per lemma
+                    continue
                 # Get list of sets of identifiers that belong to the same cluster
                 cluster_sets = {}
                 id_to_grouping = {row2['identifier']: f"{row2['identifier']}###{row2['grouping']}" for index, row2 in df_dwug_de.iterrows()}
-                for identifier, cluster in row['clustering_pred'].items():
+                for identifier, cluster in row['clustering_gold'].items():
                     if cluster not in cluster_sets.keys():
                         cluster_sets[cluster] = set()
                     identifier = id_to_grouping[identifier]
@@ -200,13 +179,33 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
 
                 # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
                 freq_dist, prob_dist = get_cluster_distributions(classes_sets)
-                #print(classes_sets)
-                #print(prob_dist)
-                if prob_dist[0] == [] or prob_dist[1] == []:
-                    df.loc[index, 'GC_pred'] = None
-                else:
-                    df.loc[index, 'GC_pred'] = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
-                df.loc[index, 'BC_pred'] = predict_binary(freq_dist)
+
+                df.loc[df['word'] == lemma_name, 'GC_gold'] = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
+                df.loc[df['word'] == lemma_name, 'BC_gold'] = predict_binary(freq_dist, minf=bc_min_max[0], maxf=bc_min_max[1], gold=True) # 0 and 1 or 1 and 3
+
+
+
+        for index, row in tqdm(df.iterrows(), total=len(df), desc=f"Predicting GC_pred and BC_pred (method={method})"):
+
+            # Get list of sets of identifiers that belong to the same cluster
+            cluster_sets = {}
+            id_to_grouping = {row2['identifier']: f"{row2['identifier']}###{row2['grouping']}" for index, row2 in df_dwug_de.iterrows()}
+            for identifier, cluster in row['clustering_pred'].items():
+                if cluster not in cluster_sets.keys():
+                    cluster_sets[cluster] = set()
+                identifier = id_to_grouping[identifier]
+                cluster_sets[cluster].add(identifier)
+            classes_sets = list(cluster_sets.values())
+
+            # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
+            freq_dist, prob_dist = get_cluster_distributions(classes_sets)
+            #print(classes_sets)
+            #print(prob_dist)
+            if prob_dist[0] == [] or prob_dist[1] == []:
+                df.loc[index, 'GC_pred'] = None
+            else:
+                df.loc[index, 'GC_pred'] = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
+            df.loc[index, 'BC_pred'] = predict_binary(freq_dist, minf=bc_min_max[0], maxf=bc_min_max[1], gold=False) # 0 and 1 or 1 and 3
 
 
 
@@ -385,20 +384,21 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
 
         print("\nModels selected by CV:")
         print(q2)
-        os.makedirs(f"./clustering_evaluation/{ds}/{metric}", exist_ok=True)
-        os.makedirs(f"./clustering_evaluation/{ds}_without_minus_one/{metric}", exist_ok=True)
-        os.makedirs(f"./clustering_evaluation/{ds}_cleaned/{metric}", exist_ok=True)
-        os.makedirs(f"./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}", exist_ok=True)
+        bcmm = "01" if bc_min_max == [0, 1] else "13"
+        os.makedirs(f"./clustering_evaluation/{bcmm}/{ds}/{metric}", exist_ok=True)
+        os.makedirs(f"./clustering_evaluation/{bcmm}/{ds}_without_minus_one/{metric}", exist_ok=True)
+        os.makedirs(f"./clustering_evaluation/{bcmm}/{ds}_cleaned/{metric}", exist_ok=True)
+        os.makedirs(f"./clustering_evaluation/{bcmm}/{ds}_cleaned_without_minus_one/{metric}", exist_ok=True)
         if cleaned_gold==False:                     # uncleaned gold
             if filter_minus_one_nodes == True:
-                q2.to_csv(f"./clustering_evaluation/{ds}_without_minus_one/{metric}/models_selected_by_cv.csv", index=False)   # save
+                q2.to_csv(f"./clustering_evaluation/{bcmm}/{ds}_without_minus_one/{metric}/models_selected_by_cv.csv", index=False)   # save
             else:
-                q2.to_csv(f"./clustering_evaluation/{ds}/{metric}/models_selected_by_cv.csv", index=False)   # save
+                q2.to_csv(f"./clustering_evaluation/{bcmm}/{ds}/{metric}/models_selected_by_cv.csv", index=False)   # save
         else:                                       # cleaned gold
             if filter_minus_one_nodes == True:
-                q2.to_csv(f"./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}/models_selected_by_cv.csv", index=False)   # save
+                q2.to_csv(f"./clustering_evaluation/{bcmm}/{ds}_cleaned_without_minus_one/{metric}/models_selected_by_cv.csv", index=False)   # save
             else:
-                q2.to_csv(f"./clustering_evaluation/{ds}_cleaned/{metric}/models_selected_by_cv.csv", index=False)   # save
+                q2.to_csv(f"./clustering_evaluation/{bcmm}/{ds}_cleaned/{metric}/models_selected_by_cv.csv", index=False)   # save
 
         """
         print('\n\nWARNING! Biased estimates of ARI: taking the most frequently selected configuration for each method!')
@@ -435,14 +435,14 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
 
         if cleaned_gold==False:                     # uncleaned gold
             if filter_minus_one_nodes == True:
-                g.savefig(f'./clustering_evaluation/{ds}_without_minus_one/{metric}/barplot_bestmodels_perword.pdf')
+                g.savefig(f'./clustering_evaluation/{bcmm}/{ds}_without_minus_one/{metric}/barplot_bestmodels_perword.pdf')
             else:
-                g.savefig(f'./clustering_evaluation/{ds}/{metric}/barplot_bestmodels_perword.pdf')
+                g.savefig(f'./clustering_evaluation/{bcmm}/{ds}/{metric}/barplot_bestmodels_perword.pdf')
         else:                                       # cleaned gold
             if filter_minus_one_nodes == True:
-                g.savefig(f'./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}/barplot_bestmodels_perword.pdf')
+                g.savefig(f'./clustering_evaluation/{bcmm}/{ds}_cleaned_without_minus_one/{metric}/barplot_bestmodels_perword.pdf')
             else:
-                g.savefig(f'./clustering_evaluation/{ds}_cleaned/{metric}/barplot_bestmodels_perword.pdf')
+                g.savefig(f'./clustering_evaluation/{bcmm}/{ds}_cleaned/{metric}/barplot_bestmodels_perword.pdf')
 
         # q columns=['method','lemma','ARI']
         #print(q)
@@ -459,14 +459,14 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
 
         if cleaned_gold==False:                     # uncleaned gold
             if filter_minus_one_nodes == True:
-                ari_mean_df.to_csv(f"./clustering_evaluation/{ds}_without_minus_one/{metric}/mean_crossvalidated_results.csv", index=False)   # save
+                ari_mean_df.to_csv(f"./clustering_evaluation/{bcmm}/{ds}_without_minus_one/{metric}/mean_crossvalidated_results.csv", index=False)   # save
             else:
-                ari_mean_df.to_csv(f"./clustering_evaluation/{ds}/{metric}/mean_crossvalidated_results.csv", index=False)   # save
+                ari_mean_df.to_csv(f"./clustering_evaluation/{bcmm}/{ds}/{metric}/mean_crossvalidated_results.csv", index=False)   # save
         else:                                       # cleaned gold
             if filter_minus_one_nodes == True:
-                ari_mean_df.to_csv(f"./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}/mean_crossvalidated_results.csv", index=False)   # save
+                ari_mean_df.to_csv(f"./clustering_evaluation/{bcmm}/{ds}_cleaned_without_minus_one/{metric}/mean_crossvalidated_results.csv", index=False)   # save
             else:
-                ari_mean_df.to_csv(f"./clustering_evaluation/{ds}_cleaned/{metric}/mean_crossvalidated_results.csv", index=False)   # save
+                ari_mean_df.to_csv(f"./clustering_evaluation/{bcmm}/{ds}_cleaned/{metric}/mean_crossvalidated_results.csv", index=False)   # save
 
 
 
@@ -487,7 +487,7 @@ def evaluate_clustering(dataset, cleaned_gold, filter_minus_one_nodes):
 
 def load_cleaned_gold_clustering(dataset):
 
-    # Clean gold data with dgrnode with threshold 5
+    # Clean gold data with clustersize
     
     df_cleaning = pd.DataFrame(columns=['identifier', 'cluster', 'model', 'strategy', 'threshold', 'lemma'])
     words = sorted(os.listdir(f'{dataset}/data/'))
@@ -545,7 +545,10 @@ def load_cleaned_gold_clustering(dataset):
         # clean graph 
         methods = ["clustersize"]
         for method in methods:
-            parameter = 5
+            if "nor_dia_change" in dataset or "refwug" in dataset:
+                parameter = 10
+            else:
+                parameter = 20
             model = str(method) + "_" + str(parameter)
             g = graph.copy()
             #print('Input graph: ', g)
@@ -631,8 +634,6 @@ def load_cleaned_gold_clustering(dataset):
 
 
 if __name__=="__main__":
-    dataset = "./data/dwug_de"
-    evaluate_clustering(dataset, cleaned_gold=False, filter_minus_one_nodes=False)
-    evaluate_clustering(dataset, cleaned_gold=False, filter_minus_one_nodes=True)
-    evaluate_clustering(dataset, cleaned_gold=True, filter_minus_one_nodes=False)
-    evaluate_clustering(dataset, cleaned_gold=True, filter_minus_one_nodes=True)
+    dataset = "./data/refwug"
+    evaluate_clustering(dataset, cleaned_gold=True, filter_minus_one_nodes=False, bc_min_max=[1,3])
+    evaluate_clustering(dataset, cleaned_gold=True, filter_minus_one_nodes=True, bc_min_max=[1,3])

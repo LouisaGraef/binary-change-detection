@@ -70,8 +70,8 @@ if __name__=="__main__":
     evaluate_cleaning2(dataset)
 
     dataset = "./data/dwug_sv"
-    #get_parameters(dataset)
-    #clean_graphs(dataset)
+    get_parameters(dataset)
+    clean_graphs(dataset)
     evaluate_cleaning2(dataset)
 
     dataset = "./data/dwug_la"
@@ -88,7 +88,7 @@ if __name__=="__main__":
     get_parameters(dataset)
     clean_graphs(dataset)
     evaluate_cleaning2(dataset)
-
+    
     dataset = "./data/nor_dia_change-main/subset1"
     subprocess.run(['bash', './wug_data2graph_pipeline.sh', dataset])       # get graph with uses and judgments 
     get_parameters(dataset)
