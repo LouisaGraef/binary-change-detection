@@ -5,7 +5,7 @@ import os
 from matplotlib import pyplot as plt
 
 
-def evaluate_clustering_plot(datasets, cleaned_gold=False, filter_minus_one_nodes=False):
+def evaluate_clustering_plot(datasets, cleaned_gold=False, filter_minus_one_nodes=False, bcmm="13"):
     for metric in ["ARI", "BC_F1", "GC_Spearmanr"]:
 
 
@@ -20,20 +20,20 @@ def evaluate_clustering_plot(datasets, cleaned_gold=False, filter_minus_one_node
     
             if cleaned_gold==False:                     # uncleaned gold
                 if filter_minus_one_nodes == True:
-                    mr = f"./clustering_evaluation/{ds}_without_minus_one/{metric}/mean_crossvalidated_results.csv"
+                    mr = f"./clustering_evaluation/{bcmm}/{ds}_without_minus_one/{metric}/mean_crossvalidated_results.csv"
                     df = pd.read_csv(mr)
                     df['dataset'] = ds
                 else:
-                    mr = f"./clustering_evaluation/{ds}/{metric}/mean_crossvalidated_results.csv"
+                    mr = f"./clustering_evaluation/{bcmm}/{ds}/{metric}/mean_crossvalidated_results.csv"
                     df = pd.read_csv(mr)
                     df['dataset'] = ds
             else:                                       # cleaned gold
                 if filter_minus_one_nodes == True:
-                    mr = f"./clustering_evaluation/{ds}_cleaned_without_minus_one/{metric}/mean_crossvalidated_results.csv"
+                    mr = f"./clustering_evaluation/{bcmm}/{ds}_cleaned_without_minus_one/{metric}/mean_crossvalidated_results.csv"
                     df = pd.read_csv(mr)
                     df['dataset'] = ds
                 else:
-                    mr = f"./clustering_evaluation/{ds}_cleaned/{metric}/mean_crossvalidated_results.csv"
+                    mr = f"./clustering_evaluation/{bcmm}/{ds}_cleaned/{metric}/mean_crossvalidated_results.csv"
                     df = pd.read_csv(mr)
                     df['dataset'] = ds
             metric_results = pd.concat([metric_results, df])
@@ -92,18 +92,18 @@ def evaluate_clustering_plot(datasets, cleaned_gold=False, filter_minus_one_node
 
 
         # save plot
-        os.makedirs(f"./clustering_evaluation_plots", exist_ok=True)
+        os.makedirs(f"./clustering_evaluation_plots/{bcmm}", exist_ok=True)
         
         if cleaned_gold==False:                     # uncleaned gold
             if filter_minus_one_nodes == True:
-                g.savefig(f'./clustering_evaluation_plots/{metric}_without_minus_one.pdf')
+                g.savefig(f'./clustering_evaluation_plots/{bcmm}/{metric}_without_minus_one.pdf')
             else:
-                g.savefig(f'./clustering_evaluation_plots/{metric}_normal.pdf')
+                g.savefig(f'./clustering_evaluation_plots/{bcmm}/{metric}_normal.pdf')
         else:                                       # cleaned gold
             if filter_minus_one_nodes == True:
-                g.savefig(f'./clustering_evaluation_plots/{metric}_cleaned_without_minus_one.pdf')
+                g.savefig(f'./clustering_evaluation_plots/{bcmm}/{metric}_cleaned_without_minus_one.pdf')
             else:
-                g.savefig(f'./clustering_evaluation_plots/{metric}_cleaned.pdf')
+                g.savefig(f'./clustering_evaluation_plots/{bcmm}/{metric}_cleaned.pdf')
 
 
 

@@ -83,7 +83,7 @@ def cluster_graph_wsbm(graph, parameters, word):
 
 
     classes = wsbm_clustering(graph, distribution=parameters[0], is_weighted=True, weight_attributes=['weight'], 
-                              weight_data_type='int', B_max=7, niter=100)
+                              weight_data_type='int', B_max=7, niter=100, adjacency=parameters[1])
 
     # Store cluster labels (cluster label for each node)
     labels = list()

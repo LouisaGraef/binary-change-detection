@@ -1,10 +1,11 @@
+import warnings
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 import pandas as pd
-import requests
 from pathlib import Path
 import unicodedata
 import numpy as np
-from sklearn.metrics import adjusted_rand_score, rand_score
 import matplotlib.pyplot as plt
 import os
 from download_data import download_paper_datasets, download_new_datasets
@@ -13,6 +14,7 @@ from modules import get_cluster_stats
 import pickle
 from cluster_ import get_clusters
 from correlation import Loss
+from tqdm import tqdm
 
 
 """
@@ -90,12 +92,14 @@ def evaluate_cleaning2(dataset):
         :return :
         """
         try:
-            clusters, _, _ = get_clusters(graph, is_include_noise = True)
+            clusters, _, _ = get_clusters(graph, is_include_noise = False)
         except KeyError:
             print('No clusters found.')
             return {}
         
+        noise, _, _ = get_clusters(graph, is_include_noise = True, is_include_main = False)
         G_clean = graph.copy()    
+        G_clean.remove_nodes_from([node for cluster in noise for node in cluster])
         stats = {}
         max_error = max(2.5-1, 4-2.5)
 
@@ -196,7 +200,7 @@ def evaluate_cleaning2(dataset):
                                 #'(1-ari)':1-adjusted_rand_score(r.label, r.cluster), 
                                 f'(1-{eval_method})':1-get_eval_method(r.name, r.identifier, eval_method), 
                                 #'(1-ri)':1-rand_score(r.label, r.cluster),
-                            }, index=[0])).droplevel(level=1)
+                            }, index=[0]), include_groups=False).droplevel(level=1)
         if original_stats is not None:
             # restore words from original_stats that are absent in l2stat (all uses removed)
             l2stat = l2stat + original_stats * 0 
@@ -209,12 +213,6 @@ def evaluate_cleaning2(dataset):
             # removing nodes).
             l2stat_diff = (l2stat - original_stats)
             l2stat_reldiff = l2stat_diff.where(l2stat_diff==0.0, l2stat_diff / original_stats)
-            """if l2stat_diff > 0:
-                print(f"diff: {l2stat_diff}")
-                print(f"reldiff: {l2stat_reldiff}")
-                print(f"original stats: {original_stats}")
-                print(f"new stats: {l2stat}")
-                quit()"""
             l2stat_diff.rename(columns={c:f'Δ{c}' for c in l2stat_diff.columns if c!='lemma'}, inplace=True)
             l2stat_reldiff.rename(columns={c:f'Δ{c}/{c}' for c in l2stat_reldiff.columns if c!='lemma'}, inplace=True)
             # return a wide dataframe with the metrics, their absolute and relative changes
@@ -224,21 +222,29 @@ def evaluate_cleaning2(dataset):
 
 
 
+    
+    # df_dwug_de: ['identifier', 'cluster', 'lemma', 'grouping']
 
-    eval_methods = ['win_min_max_normalized', 'conflicts', 'conflicts_normalized', 'conflicts_between_clusters', 'conflicts_within_clusters',
-                  'win_min_normalized', 'win_max_normalized']      
-    for eval_method in eval_methods:
-
-        df = df_dwug_de.query("cluster!=-1")
-        #df = df_dwug_de
-        print(df[df['lemma'] == "下海"])       # columns: ['identifier', 'cluster', 'lemma', 'grouping']        # 39
-        print(len(df[df['lemma'] == "下海"]))       # columns: ['identifier', 'cluster', 'lemma', 'grouping']       # 39
+    # df: without cluster=-1
+    df = df_dwug_de.query("cluster!=-1")
+    print(f"Dataset: {dataset}")
+    #print(df)
+    #print(df[df['lemma'] == "下海"])       # columns: ['identifier', 'cluster', 'lemma', 'grouping']        # 39
+    #print(len(df[df['lemma'] == "下海"]))       # columns: ['identifier', 'cluster', 'lemma', 'grouping']       # 39
 
 
+
+    #eval_methods = ['win_min_max_normalized', 'conflicts', 'conflicts_normalized', 'conflicts_between_clusters', 'conflicts_within_clusters',
+    #              'win_min_normalized', 'win_max_normalized']      
+    eval_methods = ['win_min_max_normalized', 'conflicts_normalized']
+    for eval_method in tqdm(eval_methods, desc="Evaluating"):
+        tqdm.write(f"Evaluation: {eval_method}")
+
+        #________________________________________
         # df: before cleaning
         original_stats = get_perlemma_stats(df)  # columns: ('lemma'), ['ntargets', 'nuses', 'nclusters', 'conflicts_normalized', '(1-conflicts_normalized)']
-        print(original_stats)
-        print(original_stats.columns.tolist())          # ['ntargets', 'nuses', 'nclusters', 'win_min_max_normalized', '(1-win_min_max_normalized)']
+        #print(original_stats)
+        #print(original_stats.columns.tolist())          # ['ntargets', 'nuses', 'nclusters', 'win_min_max_normalized', '(1-win_min_max_normalized)']
         # df_cleaning.strategy.value_counts()
         # print(df_cleaning.query('strategy=="dgrnode"').model.value_counts())
         if "chiwug" in dataset:
@@ -247,12 +253,24 @@ def evaluate_cleaning2(dataset):
         else:
             dfm = df.drop(columns='cluster').merge(df_cleaning[['identifier','cluster','model','strategy']],    
                                             on=['identifier'], how='inner')
-        print(dfm)                                  # columns: ['identifier', 'label', 'lemma', 'grouping', 'cluster', 'model', 'strategy']
+        #print(df)
+        #print(dfm)                                  # columns: ['identifier', 'label', 'lemma', 'grouping', 'cluster', 'model', 'strategy']
+        print(len(dfm))
+        tdf = dfm.groupby(['model','strategy'])
+        print(len(tdf))
 
-        print(dfm[(dfm["lemma"] == "下海") & (dfm["model"] == "stdnode_0.08226495726495725")].sort_values(by="identifier"))
-        print(len(dfm[(dfm["lemma"] == "下海") & (dfm["model"] == "stdnode_0.08226495726495725")].sort_values(by="identifier")))    # 25
+        #print(dfm[(dfm["lemma"] == "下海") & (dfm["model"] == "stdnode_0.08226495726495725")].sort_values(by="identifier"))
+        #print(len(dfm[(dfm["lemma"] == "下海") & (dfm["model"] == "stdnode_0.08226495726495725")].sort_values(by="identifier")))    # 25
 
         pdf = dfm.groupby(['model','strategy']).apply(lambda x: get_perlemma_stats(x, original_stats)).reset_index()
+        print(len(pdf))     # 4700
+        print(len(pdf)/50)     
+        
+        #print(pdf.columns.tolist())     
+        # ['model', 'strategy', 'lemma', 'ntargets', 'nuses', 'nclusters', 'win_min_max_normalized', '(1-win_min_max_normalized)', 
+        # 'Δntargets', 'Δnuses', 'Δnclusters', 'Δwin_min_max_normalized', 'Δ(1-win_min_max_normalized)', 'Δntargets/ntargets', 'Δnuses/nuses', 
+        # 'Δnclusters/nclusters', 'Δwin_min_max_normalized/win_min_max_normalized', 'Δ(1-win_min_max_normalized)/(1-win_min_max_normalized)']
+        
         #pd.set_option("display.max_columns", None)  
         #pd.set_option("display.expand_frame_repr", False)  
         #print(pdf[pdf["lemma"] == "下海"])      # nuses max 40 
@@ -287,6 +305,8 @@ def evaluate_cleaning2(dataset):
         # print(pdf.columns.tolist())
         # print(pdf[['model', 'conflicts_normalized', '(1-conflicts_normalized)']])
         # same columns
+        print(len(pdf)/50)
+        #quit()
 
 
 
@@ -344,17 +364,47 @@ def evaluate_cleaning2(dataset):
 
         # plotdf.loc[plotdf.nuses==0,'lemma'] = None  # when calculating nunique for lemma, None will be ignored
         # rows with lemma=None do not affect lemma:nunique; rows with NaN metric values do not affect the averages
+        print(len(plotdf.groupby(['model'])))   # 1094 (dwug_de)
         mpdf = plotdf.groupby(['model']).agg({'strategy':'first','ntargets':'sum','nuses':'sum', 'nclusters':'sum'}|
                                     {c:'mean' for c in plotdf.columns if f'{eval_method}' in c or 'Δ' in c})
         # mpdf.rename(columns={'lemma':'ntargets'}, inplace=True)
         mpdf['size'] = mpdf.strategy.apply(lambda x: 2 if x in {'collapse','stdedge'} else 1)  # dot sizes
-        mpdf
+
 
 
 
         # clustering quality metrics averaged across survived target words 
-
         def plot_mpdf(mpdf, x='Δnuses/nuses', y='Δ(1-ri)/(1-ri)', legend=True,aspect=1.5):
+            g = sns.relplot(data=mpdf, 
+                        x=x, y=y, hue='strategy',style='strategy',
+                        hue_order=strategy_order, style_order=strategy_order,
+                        markers=True, kind='line', errorbar=('ci',95), legend=legend, aspect=aspect)
+            if legend:
+                for t in g.legend.texts:
+                    t.set_text(method2papername[t.get_text()])
+
+            return g
+        
+        # plot sizecluster values on x axis
+        def plot_mpdf_sizecluster_values_x(mpdf, y='Δ(1-ri)/(1-ri)', legend=True,aspect=1.5):
+            mpdf = mpdf[mpdf.index.str.startswith('clustersize')].copy()
+            mpdf['param'] = mpdf.index.str.split('_').str[-1].astype(float)
+            x = 'param'
+            g = sns.relplot(data=mpdf, 
+                        x=x, y=y, hue='strategy',style='strategy',
+                        hue_order=strategy_order, style_order=strategy_order,
+                        markers=True, kind='line', errorbar=('ci',95), legend=legend, aspect=aspect)
+            if legend:
+                for t in g.legend.texts:
+                    t.set_text(method2papername[t.get_text()])
+
+            return g
+        
+        # plot sizecluster values on x axis
+        def plot_mpdf_sizecluster_values_y(mpdf, x='Δnuses/nuses', legend=True,aspect=1.5):
+            mpdf = mpdf[mpdf.index.str.startswith('clustersize')].copy()
+            mpdf['param'] = mpdf.index.str.split('_').str[-1].astype(float)
+            y = 'param'
             g = sns.relplot(data=mpdf, 
                         x=x, y=y, hue='strategy',style='strategy',
                         hue_order=strategy_order, style_order=strategy_order,
@@ -389,11 +439,42 @@ def evaluate_cleaning2(dataset):
         else:
             os.makedirs(f'cleaning_results/{ds}/{eval_method}', exist_ok=True)
             g.savefig(f'cleaning_results/{ds}/{eval_method}/app_nclusters_avg.pdf')
+        
+
+        # plot sizecluster values on x axis
+        g = plot_mpdf_sizecluster_values_x(mpdf, y=f'Δ(1-{eval_method})/(1-{eval_method})')
+        sns.move_legend(g, 'lower center', bbox_to_anchor=(0.4, 1), frameon=True, ncol=2)
+        
+        if "paper_data" in dataset:
+            os.makedirs(f'cleaning_results/paper_versions/{ds}/{eval_method}', exist_ok=True)
+            g.savefig(f'cleaning_results/paper_versions/{ds}/{eval_method}/sizecluster_values_x_avg.pdf')
+        else:
+            os.makedirs(f'cleaning_results/{ds}/{eval_method}', exist_ok=True)
+            g.savefig(f'cleaning_results/{ds}/{eval_method}/sizecluster_values_x_avg.pdf')
+        
+
+        # plot sizecluster values on y axis (x='Δnuses/nuses')
+        g = plot_mpdf_sizecluster_values_y(mpdf)
+        sns.move_legend(g, 'lower center', bbox_to_anchor=(0.4, 1), frameon=True, ncol=2)
+        
+        if "paper_data" in dataset:
+            os.makedirs(f'cleaning_results/paper_versions/{ds}/{eval_method}', exist_ok=True)
+            g.savefig(f'cleaning_results/paper_versions/{ds}/{eval_method}/sizecluster_values_y_avg.pdf')
+        else:
+            os.makedirs(f'cleaning_results/{ds}/{eval_method}', exist_ok=True)
+            g.savefig(f'cleaning_results/{ds}/{eval_method}/sizecluster_values_y_avg.pdf')
 
 
 
 
 
 if __name__=="__main__":
-    dataset = './data/discowug'
+    datasets = ["dwug_de", "discowug", "refwug", "dwug_en", "dwug_sv", "dwug_la", "dwug_es", "chiwug",      
+                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]                               
+    datasets = ["./data/" + dataset for dataset in datasets]
+
+    dataset = './paper_data/dwug_de'
     evaluate_cleaning2(dataset)
+
+    for dataset in datasets:
+        evaluate_cleaning2(dataset)
