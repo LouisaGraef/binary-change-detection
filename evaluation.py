@@ -18,6 +18,11 @@ from collections import defaultdict
 from scipy.spatial.distance import jensenshannon
 import itertools
 from cluster_graph import cluster_graph
+import unicodedata
+import pickle
+from modules import get_nan_edges
+from cleaning import clean_graph
+
 
 
 
@@ -152,7 +157,7 @@ def read_data(dataset, paper_reproduction):
 
 
     gold_gc = load_gold_lsc(dataset)[['lemma', 'change_graded']].sort_values('lemma')    # read graded change gold scores 
-    gold_bc = load_gold_lsc(dataset)[['lemma', 'change_binary']].sort_values('lemma')    # read graded change gold scores 
+    #gold_bc = load_gold_lsc(dataset)[['lemma', 'change_binary']].sort_values('lemma')    # read binary change gold scores 
 
     
     # print(gold_gc.shape, len(words))          # (50, 2) 50 -> columns 'lemma' and 'change_graded'
@@ -170,7 +175,8 @@ def read_data(dataset, paper_reproduction):
     # gold_gc: dataframe 
     # print(gold_gc.columns.tolist())       # ['lemma', 'change_graded']
     
-    return edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc
+    #return edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc
+    return edge_preds, edge_preds_full, gold_clusters, gold_gc
 
 
 
@@ -337,7 +343,7 @@ def evaluate_wic(datasets, paper_reproduction):
 """
 Evaluates the model performance on WSI (Clustering evaluation with ARI (and Purity)) and Graded Change Detection (Spearman Correlation)
 """
-def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_list):
+def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_list, cleaned=False):
     
     print(f'\nDataset: {dataset}  \nClustering Method: {clustering_method}')
 
@@ -361,7 +367,8 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
 
     # Read data 
-    edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc = read_data(dataset, paper_reproduction=paper_reproduction)
+    #edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc = read_data(dataset, paper_reproduction=paper_reproduction)
+    edge_preds, edge_preds_full, gold_clusters, gold_gc = read_data(dataset, paper_reproduction=paper_reproduction)
     # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
     # print(gold_clusters[0].columns.tolist())      # ['identifier', 'cluster']
     # print(gold_gc.columns.tolist())       # ['lemma', 'change_graded']
@@ -386,9 +393,24 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
     print(combinations)
 
     # delete old parameter grid if one exists
-    df_output_file=f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv"
+    if cleaned == True:
+        df_output_file=f"./parameter_grids/cleaned/{ds}/{clustering_method}/parameter_grid.tsv"
+    else:
+        df_output_file=f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv"
     if os.path.exists(df_output_file):
-        os.remove(df_output_file)
+        os.remove(df_output_file)          
+
+    #print(edge_preds_full)                                              # [identifier1, identifier2, edge_pred, grouping1, grouping2] for every word
+    if cleaned==True:
+        cleaned_gold_clustering = load_cleaned_gold_clustering(dataset)
+        #print(cleaned_gold_clustering)                                      # identifier, cluster, lemma, grouping 
+        #quit()
+        # remove cleaned nodes before clustering cleaned graph 
+        valid_identifiers = set(cleaned_gold_clustering["identifier"])
+        edge_preds_full = [df[(df["identifier1"].isin(valid_identifiers)) & (df["identifier2"].isin(valid_identifiers))].reset_index(drop=True)
+                           for df in edge_preds_full]
+        #print(edge_preds_full)
+
 
     for comb in combinations:
         if comb[0] == 'ward' and not comb[1] == 'euclidean':    # Agglomerative clustering: Ward can only work with euclidean distances.
@@ -408,47 +430,62 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
                 word_edge_preds = edge_preds[i]
             else:
                 word_edge_preds = edge_preds_full[i]    # use edge predictions of all edges
+                #print(len(word_edge_preds))
+            if len(word_edge_preds) > 0:                            # not all nodes have been cleaned out
+                graph = generate_graph(word_edge_preds)         # generate graph with predicted edge weights for word i
+                # cluster graph (cluster_labels: dataframe with columns ['identifier', 'cluster'])
+                #print(word)
+                #print(graph)
+                if comb[0] == "nearest_neighbors" and comb[1]>graph.number_of_nodes():
+                    continue
+                if clustering_method in ["k-means", "agglomerative", "spectral"] and len(graph.nodes) <= 2:         # at least 3 nodes for kmeans, aggl and spectral
+                    print("0")
+                    new_grid_row = {'parameter_combination': comb, 'word': word, 'GC_pred': 0, 'GC_gold': 0, 
+                                'BC_pred': 0, 'BC_gold': 0, 'clustering_pred': {}, 'clustering_gold': {}}
+                else:
+                    cluster_labels, classes_sets = cluster_graph(graph, clustering_method, paper_reproduction, comb, word=word)    
+                    
+                    # Evaluate clustering with ARI and Purity
+                    gold_clusters[i] = gold_clusters[i].sort_values('identifier')
 
-            graph = generate_graph(word_edge_preds)         # generate graph with predicted edge weights for word i
-            # cluster graph (cluster_labels: dataframe with columns ['identifier', 'cluster'])
-            #print(word)
-            cluster_labels, classes_sets = cluster_graph(graph, clustering_method, paper_reproduction, comb, word=word)    
-            
-            # Evaluate clustering with ARI and Purity
-            gold_clusters[i] = gold_clusters[i].sort_values('identifier')
+                    # Filter cluster_labels of clusters that have no gold cluster out
+                    if paper_reproduction==False:
+                        cluster_labels = cluster_labels[cluster_labels['identifier'].isin(gold_clusters[i]['identifier'])].sort_values(['identifier']).reset_index(drop=True)
+                        gold_clusters[i] = gold_clusters[i][gold_clusters[i]['identifier'].isin(cluster_labels['identifier'])].sort_values(['identifier']).reset_index(drop=True)
+                    
 
-            # Filter cluster_labels of clusters that have no gold cluster out
-            if paper_reproduction==False:
-                cluster_labels = cluster_labels[cluster_labels['identifier'].isin(gold_clusters[i]['identifier'])].sort_values(['identifier']).reset_index(drop=True)
-                gold_clusters[i] = gold_clusters[i][gold_clusters[i]['identifier'].isin(cluster_labels['identifier'])].sort_values(['identifier']).reset_index(drop=True)
-            
+                    clusters_metrics['adjusted_rand_score'].append(adjusted_rand_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
+                    clusters_metrics['purity'].append(purity_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
+                    print(f'{word_counter}/{len(words)}\t ARI: {clusters_metrics['adjusted_rand_score'][-1]}\tPurity: {clusters_metrics['purity'][-1]}')
 
-            clusters_metrics['adjusted_rand_score'].append(adjusted_rand_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
-            clusters_metrics['purity'].append(purity_score(cluster_labels.cluster.values, gold_clusters[i].cluster.values))
-            print(f'{word_counter}/{len(words)}\t ARI: {clusters_metrics['adjusted_rand_score'][-1]}\tPurity: {clusters_metrics['purity'][-1]}')
+                    # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
+                    freq_dist, prob_dist = get_cluster_distributions(classes_sets)
+                    cluster_dists.append(prob_dist)     # cluster distributions for LSC 
 
-            # Compute cluster distributions (cluster frequency distribution and cluster probability distribution) for one Graph
-            freq_dist, prob_dist = get_cluster_distributions(classes_sets)
-            cluster_dists.append(prob_dist)     # cluster distributions for LSC 
+                    # Add evaluation results placeholders to parameter_grid
 
-            # Add evaluation results to parameter_grid
-            gc_pred = jensenshannon(prob_dist[0], prob_dist[1], base=2.0)
-            bc_pred = predict_binary(freq_dist, minf=1, maxf=3, gold=False)
-
-            gc_true = gold_gc.iloc[i]['change_graded']
-            bc_true = gold_bc.iloc[i]['change_binary']
-            clustering_pred = cluster_labels.set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
-            # columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold']
-            gold_clusters_word = gold_clusters[i].set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
-            new_grid_row = {'parameter_combination': comb, 'word': word, 'GC_pred': gc_pred, 'GC_gold': gc_true, 
-                            'BC_pred': bc_pred, 'BC_gold': bc_true, 'clustering_pred': clustering_pred, 'clustering_gold': gold_clusters_word}
+                    #gc_true = gold_gc.iloc[i]['change_graded']
+                    #bc_true = gold_bc.iloc[i]['change_binary']
+                    clustering_pred = cluster_labels.set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
+                    # columns=['parameter_combination', 'word', 'BC_pred', 'BC_gold', 'GC_pred', 'GC_gold', 'clustering_pred', 'clustering_gold']
+                    gold_clusters_word = gold_clusters[i].set_index('identifier')['cluster'].to_dict()    # maps node_ids to cluster ids
+                    new_grid_row = {'parameter_combination': comb, 'word': word, 'GC_pred': 0, 'GC_gold': 0, 
+                                    'BC_pred': 0, 'BC_gold': 0, 'clustering_pred': clustering_pred, 'clustering_gold': gold_clusters_word}
+            else:
+                print("0")
+                new_grid_row = {'parameter_combination': comb, 'word': word, 'GC_pred': 0, 'GC_gold': 0, 
+                                'BC_pred': 0, 'BC_gold': 0, 'clustering_pred': {}, 'clustering_gold': {}}
             parameter_grid.loc[len(parameter_grid)] = new_grid_row
 
             word_counter+=1
         
         
+
         # Save Parameter grid of dataset (and clustering method)
-        df_output_file=f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv"
+        if cleaned == True:
+            df_output_file=f"./parameter_grids/cleaned/{ds}/{clustering_method}/parameter_grid.tsv"
+        else:
+            df_output_file=f"./parameter_grids/{ds}/{clustering_method}/parameter_grid.tsv"
         if not os.path.exists(df_output_file):
             os.makedirs(os.path.dirname(df_output_file), exist_ok=True)
             parameter_grid.to_csv(df_output_file, sep='\t', mode='w', index=False)
@@ -481,32 +518,174 @@ def evaluate_model(dataset, paper_reproduction, clustering_method, parameter_lis
 
 
 
+
+
+
+
+def load_cleaned_gold_clustering(dataset):
+
+    # Clean gold data with clustersize
+    
+    df_cleaning = pd.DataFrame(columns=['identifier', 'cluster', 'model', 'strategy', 'threshold', 'lemma'])
+    words = sorted(os.listdir(f'{dataset}/data/'))
+    counter = 0
+    
+
+    for word in words:
+        if "dwug_es" in dataset:
+            word = unicodedata.normalize('NFKD', word)
+        else:
+            word = unicodedata.normalize('NFC', word)
+        
+
+        # load graph
+        if os.path.exists(f'{dataset}/graphs/opt/{word}'):
+            with open(f'{dataset}/graphs/opt/{word}', 'rb') as f:
+                graph = pickle.load(f)
+        else:
+            with open(f'{dataset}/graphs/{word}', 'rb') as f:
+                graph = pickle.load(f)
+
+        # add cluster information to graph
+        if os.path.exists(f'{dataset}/clusters/opt/{word}.csv'):
+            clusters_df = pd.read_csv(f'{dataset}/clusters/opt/{word}.csv', sep="\t")
+        else:
+            clusters_df = pd.read_csv(f'{dataset}/clusters/{word}.tsv', sep="\t")
+            
+        identifier2cluster = dict(zip(clusters_df['identifier'], clusters_df['cluster']))
+        for node in graph.nodes():
+            if "identifier" in graph.nodes[node]:           # sense nodes in dwug_la without identifier
+                identifier = graph.nodes[node]["identifier"]
+                if identifier in identifier2cluster:
+                    graph.nodes[node]["cluster"] = identifier2cluster[identifier]
+                else:
+                    graph.nodes[node]["cluster"] = None
+
+
+        with open(f'{dataset}/annotators.csv', encoding='utf-8') as csvfile: 
+            reader = csv.DictReader(csvfile, delimiter='\t',quoting=csv.QUOTE_NONE,strict=True)
+            annotators = [row['annotator'] for row in reader]
+        
+        # remove nan edges 
+        nan_edges = get_nan_edges(graph)
+        graph.remove_edges_from(nan_edges)
+        
+        
+        # clean graph 
+        methods = ["clustersize"]
+        for method in methods:
+            if "nor_dia_change" in dataset or "refwug" in dataset:
+                parameter = 8
+            else:
+                parameter = 20
+            model = str(method) + "_" + str(parameter)
+            g = graph.copy()
+            #print('Input graph: ', g)
+            g.graph['cleaning_stats'] = {}
+            g = clean_graph(g, method, annotators, parameter)
+            
+            #print('Cleaned graph: ', g)
+
+            for node in g.nodes:
+                try:
+                    cluster = clusters_df.loc[clusters_df['identifier'] == node, 'cluster'].values[0]     # cluster of node 
+                    #print(cluster)
+                except (IndexError):    # node with no cluster assignment
+                    continue
+                # insert new row to df_cleaning 
+                new_row = pd.DataFrame({'identifier': [node], 'cluster': [cluster], 'model': [model], 'strategy': [method], 
+                                        'threshold': [parameter], 'lemma': [word]})
+                df_cleaning = pd.concat([df_cleaning, new_row], ignore_index=True)
+                #df_cleaning.loc[len(df_cleaning)] = [node, cluster, model, method, parameter, word]
+            #print(df_cleaning)
+            #print(word, method, parameter)
+            #quit()
+        counter +=1
+        #print(f"{counter}/{len(words)}")
+
+
+
+    # load Gold Clustering (uncleaned)
+    df_dwug_de = pd.DataFrame()                                                         # gold clustering 
+    
+    if "nor_dia_change" in dataset:
+        gold_clusters_path = 'clusters/*.tsv'
+    else:
+        gold_clusters_path = 'clusters/opt/*.csv'
+
+    for p in Path(f'{dataset}/').glob(gold_clusters_path):    
+        lemma = str(p).replace('\\', '/').split('/')[-1].replace('.csv','').replace('.tsv','')
+        if "dwug_es" in dataset:
+            lemma = unicodedata.normalize('NFKD', lemma)
+        else:
+            lemma = unicodedata.normalize('NFC', lemma)
+        df = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
+        df['lemma'] = lemma
+        df_dwug_de = pd.concat([df_dwug_de, df])    
+
+    # Extract grouping (time) information
+    df_dwug_de_uses = pd.DataFrame()
+    for p in Path(f'{dataset}/data').glob('*/uses.csv'):
+        uses = pd.read_csv(p, delimiter='\t', quoting=3, na_filter=False)
+
+        # rename uses['grouping'] for Nordiachange subsets 1 and 2, normalize lemmas in dwug_es
+        if 'nor_dia_change-main/subset1' in dataset:
+            uses['grouping'] = [1 if '1970-2015' == i else 2 for i in uses['grouping']]
+        elif 'nor_dia_change-main/subset2' in dataset:
+            uses['grouping'] = [1 if '1980-1990' == i else 2 for i in uses['grouping']]
+        if "dwug_es" in dataset:
+            uses['lemma'] = uses['lemma'].apply(lambda x: unicodedata.normalize('NFKD', str(x)))
+
+        df_dwug_de_uses = pd.concat([df_dwug_de_uses, uses])
+
+    #print(df_dwug_de_uses)
+    df_dwug_de = df_dwug_de.merge(df_dwug_de_uses[['identifier', 'lemma', 'grouping']], how='left',      
+                                                on = ['identifier', 'lemma'])
+    #print(df_dwug_de)
+    # columns: ['identifier', 'cluster', 'lemma', 'grouping']
+    
+    #print(f'df_dwug_de: \n{df_dwug_de}\n')
+
+    
+
+    # only nodes left after cleaning
+    df_dwug_de_cleaned = df_dwug_de.merge(df_cleaning[['identifier', 'lemma', 'cluster']], how='right', 
+                                          on=['identifier', 'lemma', 'cluster'])
+    #print(f'df_dwug_de cleaned: \n{df_dwug_de_cleaned}\n')
+    
+
+
+    return df_dwug_de_cleaned
+
+
+
+
+
+
+
+
+
+
 if __name__=="__main__":
 
+    dataset = "./data/refwug"
+    
+    # Correlation Clustering
+    parameter_list = [[0.45, 0.5, 0.55, 0.6, 0.65], [200, 5000], [5000, 20000]]
+    evaluate_model(dataset, paper_reproduction=False, clustering_method="correlation", parameter_list=parameter_list, cleaned=True)   # create parameter grid
+
+    # K-means Clustering
+    parameter_list = [[1, 10, 20], [300, 400, 500]]
+    evaluate_model(dataset, paper_reproduction=False, clustering_method="k-means", parameter_list=parameter_list, cleaned=True)   # create parameter grid
+
+    # Agglomerative Clustering
     parameter_list = [['ward', 'average', 'complete', 'single'],['euclidean', 'cosine']]
-    evaluate_model("./data/dwug_la", paper_reproduction=False, clustering_method="agglomerative", parameter_list=parameter_list)
-    quit()
+    evaluate_model(dataset, paper_reproduction=False, clustering_method="agglomerative", parameter_list=parameter_list, cleaned=True)   # create parameter grid
     
-    # Evalation with WIC;WSI;GCD 
-    datasets = ["dwug_de", "dwug_en", "dwug_sv", "dwug_es", "chiwug", 
-                "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]       # no dwug_la 
-    datasets = ["./data/" + dataset for dataset in datasets]
+    # Spectral Clustering
+    parameter_list = [['nearest_neighbors', 'rbf'],[5, 10, 15]]
+    evaluate_model(dataset, paper_reproduction=False, clustering_method="spectral", parameter_list=parameter_list, cleaned=True)   # create parameter grid
     
-    # Read data 
-    edge_preds, edge_preds_full, gold_clusters, gold_gc, gold_bc = read_data("./data/chiwug", paper_reproduction=False)
-    # print(edge_preds[0].columns.tolist())     # ['index', 'identifier1', 'identifier2', 'judgment', 'edge_pred', 'grouping1', 'grouping2']
-
-    # Evaluate WIC (edge weight predictions) with Spearman correlation 
-    wic_spearman = WiC(edge_preds, paper_reproduction=False)
-    
-    # Add WIC Spearman Score to record 
-    new_line = "\t".join([str(i) for i in ["chiwug", wic_spearman[0].round(3)]]) + '\n'
-    print(new_line)
-
-    """
-    # WSI and LSC evaluation 
-
-    parameter_list = [[1],[2],[3]]
-    for dataset in datasets:
-        evaluate_model(dataset, paper_reproduction=False, clustering_method="k-means", parameter_list=parameter_list)
-    """
+    # WSBM Clustering 
+    parameter_list = [["real-normal", "real-exponential", "discrete-geometric", "discrete-poisson", "discrete-binomial"], [False, True]]
+    evaluate_model(dataset, paper_reproduction=False, clustering_method="wsbm", parameter_list=parameter_list, cleaned=True)   # create parameter grid
