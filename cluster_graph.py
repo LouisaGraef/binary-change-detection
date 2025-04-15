@@ -12,10 +12,6 @@ from sklearn.cluster import KMeans, AgglomerativeClustering, SpectralClustering
 from sklearn.metrics import silhouette_score
 import graph_tool
 from clustering_interface_wsbm import wsbm_clustering
-import numpy as np
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-import time
-import threading
 
 
 """
@@ -104,6 +100,7 @@ Cluster Graph with K-means (determines number of clusters with silhouette score)
 def cluster_graph_kmeans(graph, parameters):
     adj_matrix = nx.to_numpy_array(graph)        # Graph adjacency matrix as a numpy array
     sil_scores = []
+    #print(f"len(graph.nodes): {len(graph.nodes)}")
     n_clusters = range(2, min(11, len(graph.nodes)))
     max_sil_score = -1
     best_k = None
