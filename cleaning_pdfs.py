@@ -5,7 +5,7 @@ import math
 
 
 def create_cleaning_graphic(pdf_files, output_pdf, page_title, titles):
-    cols = 4
+    cols = 2        # 4
     dpi = 300
     font_size = 100
     image_max_width = 1600
