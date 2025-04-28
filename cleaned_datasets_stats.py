@@ -4,6 +4,9 @@ from evaluation_clustering import load_gold_clustering
 from scipy.spatial.distance import jensenshannon
 from tqdm import tqdm
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
 
 
 
@@ -46,13 +49,40 @@ def add_bc_and_gc_gold(data, bc_min_max):
 
 
 
+def plot(df, column, dataset, cleaned):
+    plt.figure(figsize=(12,4))
+    plt.scatter(df.index, df[column])
+    #sns.stripplot(x=df.index, y=df[column], jitter=True)
+    plt.xlabel('Lemma')
+    plt.xticks(rotation=90)
+    plt.ylabel(column)
+    plt.tight_layout()
+    #plt.grid(True)
+    
+    ds = dataset.replace("./data/", "")
+    if cleaned==True:
+        output_file = f'./ds_plots/{ds}/{column}_cleaned.png'
+    else:
+        output_file = f'./ds_plots/{ds}/{column}.png'
+    if not os.path.exists(output_file):
+        os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    plt.savefig(output_file)
+
+
+
 
 
 def get_dataset_stats(dataset, bc_min_max):
     data = load_gold_clustering(dataset)
+    if "dwug_la" in dataset:
+        filter = data["identifier"].apply(lambda x: isinstance(x, str) and pd.Series(x).str.contains(r'[a-zA-Z]').any())
+        data = data[~filter]
     cleaned_data = load_cleaned_gold_clustering(dataset)          # df (identifier, cluster, lemma, grouping) only with identifiers left after cleaning 
     #print(data)             # 421 rows
     #print(cleaned_data)     # 327 rows
+    if "dwug_la" in dataset:
+        filter = cleaned_data["identifier"].apply(lambda x: isinstance(x, str) and pd.Series(x).str.contains(r'[a-zA-Z]').any())
+        cleaned_data = cleaned_data[~filter]
 
     data = add_bc_and_gc_gold(data, bc_min_max)                         # df (identifier, cluster, lemma, grouping, clustering_gold, GC_gold, BC_gold)
     cleaned_data = add_bc_and_gc_gold(cleaned_data, bc_min_max)         # df (identifier, cluster, lemma, grouping, clustering_gold, GC_gold, BC_gold)
@@ -68,7 +98,8 @@ def get_dataset_stats(dataset, bc_min_max):
     BC_gold = data.groupby("lemma")["BC_gold"].first()
     GC_gold = data.groupby("lemma")["GC_gold"].first()
     cluster_n = pd.concat([cluster_n_total, cluster_n_1, cluster_n_2, BC_gold, GC_gold], axis=1).sort_values(by="lemma", key=lambda x: x.str.lower())
-    print(f"\n\n{cluster_n}")
+    print("\n\nbefore cleaning:\n")
+    print(f"{cluster_n}")
 
     
     # per lemma: number of clusters, BC_gold, GC_gold
@@ -78,13 +109,32 @@ def get_dataset_stats(dataset, bc_min_max):
     BC_gold = cleaned_data.groupby("lemma")["BC_gold"].first()
     GC_gold = cleaned_data.groupby("lemma")["GC_gold"].first()
     cleaned_cluster_n = pd.concat([cleaned_cluster_n_total, cleaned_cluster_n_1, cleaned_cluster_n_2, BC_gold, GC_gold], axis=1).sort_values(by="lemma", key=lambda x: x.str.lower())
-    print(f"\n\n{cleaned_cluster_n}")
+    print("\n\nafter cleaning:\n")
+    print(f"{cleaned_cluster_n}")
 
 
-    # TODO: add cluster_freq_dist, cluster_freq_dist1, cluster_freq_dist2 für jedes Lemma 
-    # TODO: make plots 
+
+
+
+    # plots 
+
+    plot(cluster_n, 'BC_gold', dataset, cleaned=False)
+    plot(cluster_n, 'GC_gold', dataset, cleaned=False)
+    plot(cleaned_cluster_n, 'BC_gold', dataset, cleaned=True)
+    plot(cleaned_cluster_n, 'GC_gold', dataset, cleaned=True)
+    
+    plot(cluster_n, 'cluster_n_total', dataset, cleaned=False)
+    plot(cluster_n, 'cluster_n_1', dataset, cleaned=False)
+    plot(cluster_n, 'cluster_n_2', dataset, cleaned=False)
+    plot(cleaned_cluster_n, 'cluster_n_total', dataset, cleaned=True)
+    plot(cleaned_cluster_n, 'cluster_n_1', dataset, cleaned=True)
+    plot(cleaned_cluster_n, 'cluster_n_2', dataset, cleaned=True)
+
+
+
+
 
 
 
 if __name__=="__main__":
-    get_dataset_stats("./data/refwug", bc_min_max=[1,3])
+    get_dataset_stats("./data/dwug_la", bc_min_max=[1,3])

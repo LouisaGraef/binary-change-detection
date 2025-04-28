@@ -21,7 +21,7 @@ Paper Code: https://github.com/FrancescoPeriti/CSSDetection/blob/main/run_compar
 
 if __name__=="__main__":
 
-    """
+    
     
     # Download datasets
     download_new_datasets() 
@@ -139,11 +139,11 @@ if __name__=="__main__":
 
 
     # Cluster cleaned Graphs (clustersize 20 or 10 depending on dataset)
-    """
+    
     datasets = ["discowug", "refwug", "dwug_la", "dwug_es", "chiwug",      # all datasets 
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2", "dwug_de", "dwug_en", "dwug_sv"]                               
     datasets = ["./data/" + dataset for dataset in datasets]
-    """
+    
     # Correlation Clustering
     parameter_list = [[0.45, 0.5, 0.55, 0.6, 0.65], [200, 5000], [5000, 20000]]
 
@@ -192,7 +192,7 @@ if __name__=="__main__":
     evaluate_model("./data/dwug_de", paper_reproduction=False, clustering_method="wsbm", parameter_list=parameter_list, cleaned=True)   # create parameter grid
     evaluate_model("./data/dwug_en", paper_reproduction=False, clustering_method="wsbm", parameter_list=parameter_list, cleaned=True)   # create parameter grid
     evaluate_model("./data/dwug_sv", paper_reproduction=False, clustering_method="wsbm", parameter_list=parameter_list, cleaned=True)   # create parameter grid
-    """
+    
 
 
 
@@ -210,7 +210,7 @@ if __name__=="__main__":
                 "nor_dia_change-main/subset1", "nor_dia_change-main/subset2"]                               
     datasets = ["./data/" + dataset for dataset in datasets]
 
-    """
+    
     for dataset in datasets:
         evaluate_clustering(dataset, cleaned_gold=False, filter_minus_one_nodes=False, bc_min_max=[1,3])
         evaluate_clustering(dataset, cleaned_gold=False, filter_minus_one_nodes=True, bc_min_max=[1,3])
@@ -237,7 +237,7 @@ if __name__=="__main__":
     evaluate_clustering_plot(datasets, cleaned_gold=True, filter_minus_one_nodes=False, bcmm="01")
     evaluate_clustering_plot(datasets, cleaned_gold=True, filter_minus_one_nodes=True, bcmm="01")
 
-    quit()
+    
 
 
     # Evaluate best models with best parameters on whole datasets (for comparison with Periti paper)
@@ -246,8 +246,16 @@ if __name__=="__main__":
     evaluate_paper_comparison("nor_dia_change-main/subset1", "wsbm", "('discrete-poisson', False)")
     evaluate_paper_comparison("nor_dia_change-main/subset2", "correlation", "(0.65, 200, 20000)")
     evaluate_paper_comparison("chiwug", "correlation", "(0.65, 5000, 20000)") 
-    """
+    
+
+
+
+
+
+
+
 
 
     # Get stats of datasets and cleaned datasets 
-    get_dataset_stats("./data/refwug")
+    for dataset in datasets:
+        get_dataset_stats(dataset, bc_min_max=[1,3])
