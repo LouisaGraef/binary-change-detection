@@ -7,8 +7,6 @@
 - `run_comparison.py`: run for WIC (edge weight prediction, evaluation with Spearman correlation), WSI (different Clustering methods, evaluation with ARI) and LSC (Graded and Binary Change prediction, evaluation with Spearman correlation and F1-Score)
 
 
-- Implementation of clustering paper (Periti and Tahmasebi, 2024)([[2]](#2)): https://github.com/FrancescoPeriti/CSSDetection.git
-- Repository of scripts to process Word Usage Graphs (WUGs): https://github.com/Garrafao/WUGs.git
 
 ## References
 <a id="1">[1]</a>
@@ -19,3 +17,7 @@ Rolling Review - August 2024, 2024. URL https://openreview.net/forum?id=BlbrJvKv
 Francesco Periti and Nina Tahmasebi. A systematic comparison of contextualized
 word embeddings for lexical semantic change. arXiv preprint arXiv:2402.12011,
 2024.
+
+
+- Implementation of clustering paper (Periti and Tahmasebi, 2024)([[2]](#2)): https://github.com/FrancescoPeriti/CSSDetection.git
+- Repository of scripts to process Word Usage Graphs (WUGs): https://github.com/Garrafao/WUGs.git
