@@ -21,3 +21,4 @@ word embeddings for lexical semantic change. arXiv preprint arXiv:2402.12011,
 
 - Implementation of clustering paper (Periti and Tahmasebi, 2024)([[2]](#2)): https://github.com/FrancescoPeriti/CSSDetection.git
 - Repository of scripts to process Word Usage Graphs (WUGs): https://github.com/Garrafao/WUGs.git
+- Used datasets can be found on the [WUGsite](https://www.ims.uni-stuttgart.de/en/research/resources/experiment-data/wugs/).
