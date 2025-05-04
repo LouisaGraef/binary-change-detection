@@ -10,8 +10,7 @@
 ## References
 <a id="1">[1]</a>
 Anonymous. Clustering and cleaning of word usage graphs. In Submitted to ACL
-Rolling Review - August 2024, 2024. URL https://openreview.net/forum?id=
-BlbrJvKv6L. under review.
+Rolling Review - August 2024, 2024. URL https://openreview.net/forum?id=BlbrJvKv6L. under review.
 
 <a id="2">[2]</a>
 Francesco Periti and Nina Tahmasebi. A systematic comparison of contextualized
